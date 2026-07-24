@@ -1,50 +1,59 @@
 # G2DTC
 
-General 2D Material Transfer Controller：用于二维材料转移装置的通用桌面控制程序。
+General 2D Material Transfer Controller is a desktop application for operating a
+two-dimensional material transfer system.
 
-G2DTC 把“实验装置中的逻辑自由度”和“实际连接的硬件”分开。Transfer Arm、Stage 和 Microscope 始终保持固定布局，但每个自由度可以随时选择某台电机、设为手动，或保持未分配。
+G2DTC separates the logical degrees of freedom in the experiment from the
+connected hardware. Transfer Arm, Stage, and Microscope always keep the same
+layout, while every degree of freedom can be assigned to a motor, set to manual
+control, or left unassigned.
 
-## 当前功能
+## Features
 
-- Transfer Arm：X、Y、Z
-- Stage：X、Y、Z、Rz、温控
-- Microscope：X、Y、Z
-- 共 10 个运动自由度和 1 个温控自由度
-- 设备自由分配，同一物理设备不会被重复占用
-- 选择设备后才显示对应控制面板
-- “手动”模式不向任何硬件发送命令
-- “未分配”模式保持空白占位
-- 分配和硬件配置自动保存
-- 串口操作在后台线程执行，不阻塞窗口
-- `Esc` 或顶部按钮停止所有已连接电机
-- 自带演示模式，没有硬件也能检查全部界面
+- Transfer Arm: X, Y, and Z
+- Stage: X, Y, Z, Rz, and temperature
+- Microscope: X, Y, and Z
+- 10 motion degrees of freedom and 1 temperature-control channel
+- Flexible device assignment without duplicate use of a physical device
+- A control panel appears only when a device is assigned
+- Manual mode never sends hardware commands
+- Unassigned slots remain empty
+- Assignments and hardware settings are saved automatically
+- Serial operations run in worker threads and do not block the window
+- `Esc` or the header button stops all connected motors
+- A complete simulation mode for testing the interface without hardware
 
-## 已支持硬件
+## Supported Hardware
 
 ### Newport ESP300
 
-- 三个轴分别作为三个独立电机参与分配
-- 三轴共享同一个串口和通信锁
-- 相对/绝对移动、点动、停止、使能、坐标归零、Home、软件限位
-- 自动读取控制器原生单位和最大速度
+- Each of the three axes is exposed as an independently assignable motor
+- All axes share one serial port and one communication lock
+- Relative and absolute movement, jogging, stop, enable, coordinate zeroing,
+  homing, and software limits
+- Automatic detection of native controller units and maximum velocity
 
 ### Newport NanoPZ PZC200
 
-- 每个控制器地址作为一台可分配电机
-- 相对移动、点动等级、停止、使能、位置计数归零和软件限位
-- 位置单位为 `microstep`；名义步长与实际位移需要按执行器和负载标定
+- Each controller address is exposed as one assignable motor
+- Relative movement, jog levels, stop, enable, position-count zeroing, and
+  software limits
+- Position is reported in `microstep`; actual travel must be calibrated for the
+  actuator and load
 
 ### OMEGA CNi8/CNi8D
 
-- iSeries ASCII：9600、7-O-1，支持自动识别回显开关
-- Modbus RTU：9600、8-N-1
-- 读取温度和设定值、修改设定值
-- iSeries 模式支持运行/待机和报警状态
-- 临时设定值默认只写 RAM；可选择写入 EEPROM
+- iSeries ASCII at 9600 baud, 7-O-1, with automatic echo detection
+- Modbus RTU at 9600 baud, 8-N-1
+- Temperature and setpoint reads, plus setpoint updates
+- Run/standby control and alarm status in iSeries mode
+- Temporary setpoint changes write to RAM by default, with optional EEPROM
+  persistence
 
-## 安装
+## Installation
 
-需要 Python 3.10 或更高版本。图形界面使用 Python 自带的 Tk，无需额外 GUI 框架。
+Python 3.10 or newer is required. The interface uses the Tk toolkit included
+with Python, so no additional GUI framework is needed.
 
 ```bash
 git clone https://github.com/yuansui1023/G2DTC.git
@@ -52,65 +61,70 @@ cd G2DTC
 python -m venv .venv
 ```
 
-macOS/Linux：
+On macOS or Linux:
 
 ```bash
 source .venv/bin/activate
 python -m pip install -e .
 ```
 
-Windows：
+On Windows:
 
 ```powershell
 .venv\Scripts\activate
 python -m pip install -e .
 ```
 
-## 启动
+## Running the Application
 
 ```bash
 python run.py
 ```
 
-安装为可编辑包后，也可以直接运行：
+After installing the editable package, the command-line entry point is also
+available:
 
 ```bash
 g2dtc
 ```
 
-第一次启动默认进入演示模式，10 个模拟电机和 1 个模拟温控已经分配到全部自由度。可以直接测试移动、点动、设定温度和输出开关。
+The first launch uses simulation mode. Ten simulated motors and one simulated
+temperature controller are assigned to all available slots so movement, jogging,
+temperature setpoint, and output controls can be tested immediately.
 
-## 配置真实硬件
+## Configuring Real Hardware
 
-1. 打开“设备分配”页。
-2. 关闭“演示模式”。
-3. 点击“硬件设备…”。
-4. 添加 ESP300、PZC200 或 OMEGA CNi8。
-5. 输入设备 ID、串口和通信参数。
-6. 保存后，在每个自由度右侧下拉框中选择设备或“手动控制”。
+1. Open the **Assignments** tab.
+2. Clear **Simulation mode**.
+3. Select **Hardware devices...**.
+4. Add an ESP300, PZC200, or OMEGA CNi8 controller.
+5. Enter the device ID, serial port, and communication settings.
+6. Save the device, then assign it or choose **Manual control** for each degree
+   of freedom.
 
-常见串口写法：
+Common serial-port formats:
 
-- Windows：`COM4`
-- macOS：`/dev/cu.usbserial-XXXX`
-- Linux：`/dev/ttyUSB0`
+- Windows: `COM4`
+- macOS: `/dev/cu.usbserial-XXXX`
+- Linux: `/dev/ttyUSB0`
 
-默认配置保存在：
+The default configuration location is:
 
-- Windows：`%APPDATA%\g2dtc\config.json`
-- macOS/Linux：`~/.config/g2dtc/config.json`
+- Windows: `%APPDATA%\g2dtc\config.json`
+- macOS/Linux: `~/.config/g2dtc/config.json`
 
-也可以指定独立配置：
+An independent configuration file can also be selected:
 
 ```bash
 python run.py --config ./my_lab_config.json
 ```
 
-[config.example.json](config.example.json) 展示了三个真实驱动同时存在时的完整配置结构。
+[config.example.json](config.example.json) shows a complete configuration with
+all three real hardware drivers.
 
-## CNi8 前面板设置
+## CNi8 Front-Panel Settings
 
-iSeries ASCII 默认设置：
+Recommended iSeries ASCII settings:
 
 - `BAUD = 9600`
 - `PRTY = ODD`
@@ -118,51 +132,59 @@ iSeries ASCII 默认设置：
 - `STOP = 1-BIT`
 - `M.BUS = NO`
 - `MODE = CMD`
-- `ECHO = YES`（推荐）
-- RS-232 使用 `STND = 232C`
-- RS-485 使用 `STND = 485` 并设置地址
+- `ECHO = YES`
+- For RS-232, use `STND = 232C`
+- For RS-485, use `STND = 485` and configure the controller address
 
-Modbus RTU：
+Modbus RTU settings:
 
 - `M.BUS = YES`
-- 9600、8 数据位、无校验、1 停止位
-- 地址 1–199
+- 9600 baud, 8 data bits, no parity, 1 stop bit
+- Address 1-199
 
-## 安全说明
+## Safety
 
-- 首次连接真实装置前，请先设置硬件限位和保守的速度/步长。
-- “当前位置归零”只修改坐标，不会移动设备。
-- CNi8 的“关闭输出”会进入 Standby，同时关闭输出和报警。
-- 关闭 G2DTC 只会断开通信，不会自动关闭温控输出。
-- 软件不能替代物理急停、限位开关和温度保护。
+- Before connecting real hardware, configure hardware limits and conservative
+  speeds and step sizes.
+- **Zero position** changes only the coordinate value; it does not move the
+  device.
+- Disabling the CNi8 output enters standby and disables both output and alarms.
+- Closing G2DTC disconnects communication but does not automatically disable the
+  temperature-control output.
+- Software cannot replace a physical emergency stop, limit switches, or
+  over-temperature protection.
 
-## 项目结构
+## Project Structure
 
 ```text
 g2dtc/
-├── app.py                  启动入口
-├── config.py               自由度定义和配置持久化
-├── registry.py             驱动实例注册与生命周期
-├── ui.py                   控制台、分配页和硬件配置窗口
-└── drivers/
-    ├── esp300.py
-    ├── pzc200.py
-    ├── omega_cni8.py
-    └── simulated.py
+|-- app.py                  Application entry point
+|-- config.py               Slot definitions and configuration persistence
+|-- registry.py             Driver registration and lifecycle management
+|-- ui.py                   Dashboard, assignments, and hardware settings
+`-- drivers/
+    |-- esp300.py
+    |-- pzc200.py
+    |-- omega_cni8.py
+    `-- simulated.py
 ```
 
-驱动通过很小的统一接口接入：
+Drivers use small shared interfaces:
 
-- 电机：`connect`、`disconnect`、`position`、`move_relative`、`jog`、`stop`
-- 温控：`connect`、`disconnect`、`temperature`、`setpoint`、`set_setpoint`、`output`
+- Motor: `connect`, `disconnect`, `position`, `move_relative`, `jog`, and `stop`
+- Temperature: `connect`, `disconnect`, `temperature`, `setpoint`,
+  `set_setpoint`, and `output`
 
-以后增加新型号时，只需写新的后端驱动并在 `registry.py` 中注册，不需要改变自由度布局。
+To support another device model, add a backend driver and register it in
+`registry.py`. The logical degree-of-freedom layout does not need to change.
 
-## 测试
+## Testing
 
 ```bash
 python -m unittest discover -s tests -v
 python -m compileall -q g2dtc run.py
 ```
 
-测试不需要连接真实硬件，包含配置、分配、模拟设备、三个硬件协议和共享串口行为。
+Tests do not require physical hardware. They cover configuration, assignment,
+simulated devices, all three hardware protocols, shared serial-port behavior,
+and the English-only repository policy.
