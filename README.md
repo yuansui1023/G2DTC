@@ -59,8 +59,8 @@ manual control.
 
 ## Installation
 
-Python 3.10 or newer is required. The interface uses the Tk toolkit included
-with Python, so no additional GUI framework is needed.
+Python 3.10 or newer is required. The desktop interface is built with PySide6;
+installing the package also installs the required Qt runtime.
 
 ```bash
 git clone https://github.com/yuansui1023/G2DTC.git
@@ -102,8 +102,8 @@ available in the **Assignments** tab. All degrees of freedom start in
 ## Configuring Real Hardware
 
 1. Open the **Assignments** tab.
-2. Clear **Simulation mode**.
-3. Select **Hardware devices...**.
+2. Clear **Simulation**.
+3. Select **Hardware**.
 4. Add an ESP300, PZC200, or OMEGA CNi8 controller.
 5. Enter the device ID, serial port, and communication settings.
 6. Save the device, then assign it or choose **Manual** for each degree of
