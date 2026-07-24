@@ -27,8 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         application = G2DTCApplication(args.config.expanduser().resolve())
-        application.mainloop()
-        return 0
+        return application.mainloop()
     except Exception as exc:
         print(f"G2DTC failed to start: {exc}", file=sys.stderr)
         return 2
