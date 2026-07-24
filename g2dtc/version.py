@@ -14,12 +14,12 @@ def current_commit_sha(repo_root: Path | None = None) -> str:
     """Return the current short Git commit SHA when it can be determined."""
     override = os.environ.get("G2DTC_COMMIT_SHA", "").strip()
     if override:
-        return override[:12]
+        return override[:7]
 
     root = repo_root or Path(__file__).resolve().parents[1]
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"],
+            ["git", "rev-parse", "--short=7", "HEAD"],
             cwd=root,
             capture_output=True,
             text=True,
