@@ -18,8 +18,11 @@ control, or left unassigned.
 - A compact dashboard module appears only when hardware is assigned
 - Manual mode never sends hardware commands or creates a dashboard module
 - Unassigned slots do not create dashboard modules
-- Responsive square-card dashboard with device type and controlled degree of
-  freedom shown on every module
+- Borderless, responsive instrument modules that resize and reflow with the
+  application window
+- Large module typography with the device type and controlled degree of freedom
+  shown on every module
+- Runtime Git commit SHA and GitHub source link in the title area
 - Assignments and hardware settings are saved automatically
 - Serial operations run in worker threads and do not block the window
 - `Esc` or the header button stops all connected motors

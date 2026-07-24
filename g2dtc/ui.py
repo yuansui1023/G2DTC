@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -22,6 +23,7 @@ from .config import (
     save_config,
 )
 from .registry import DeviceRegistry, SUPPORTED_DEVICE_TYPES
+from .version import REPOSITORY_URL, current_commit_sha, source_url
 
 
 COLORS = {
@@ -91,9 +93,9 @@ class SlotCard(ttk.Frame):
         super().__init__(
             master,
             style=style,
-            width=276,
-            height=276,
-            padding=(14, 12),
+            width=320,
+            height=320,
+            padding=(20, 18),
         )
         self.app = app
         self.slot = slot
@@ -153,11 +155,14 @@ class DeviceSlotCard(SlotCard):
         kind_label = "Motor" if slot.kind == "motor" else "Temperature"
         ttk.Label(
             self,
-            text=f"{kind_label.upper()}  ·  {app.registry.source(driver.device_id).upper()}",
+            text=(
+                f"{kind_label.upper()}  ·  "
+                f"{app.registry.source(driver.device_id).upper()}"
+            ),
             style="ModuleMeta.TLabel",
-        ).pack(anchor="w", pady=(5, 0))
+        ).pack(anchor="w", pady=(7, 0))
         details = ttk.Frame(self, style="Card.TFrame")
-        details.pack(fill="x", pady=(3, 0))
+        details.pack(fill="x", pady=(5, 0))
         ttk.Label(
             details,
             text=str(getattr(driver, "display_name", driver.device_id)),
@@ -328,7 +333,7 @@ class MotorSlotCard(DeviceSlotCard):
             self,
             textvariable=self.error_var,
             style="Error.TLabel",
-            wraplength=220,
+            wraplength=290,
         ).pack(anchor="w", pady=(5, 0))
         self.start_polling()
 
@@ -489,13 +494,13 @@ class TemperatureSlotCard(DeviceSlotCard):
             self,
             text="Disabling output puts the CNi8 in standby and disables alarms",
             style="Hint.TLabel",
-            wraplength=220,
+            wraplength=290,
         ).pack(anchor="w", pady=(5, 0))
         ttk.Label(
             self,
             textvariable=self.error_var,
             style="Error.TLabel",
-            wraplength=220,
+            wraplength=290,
         ).pack(anchor="w", pady=(4, 0))
         self.start_polling()
 
@@ -568,14 +573,15 @@ class TemperatureSlotCard(DeviceSlotCard):
 
 
 class Dashboard(ttk.Frame):
-    card_width = 276
-    card_gap = 12
+    minimum_card_width = 300
+    maximum_card_width = 360
+    card_gap = 16
 
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
         super().__init__(master, style="Page.TFrame")
         self.app = app
         self.cards: list[SlotCard] = []
-        self._column_count = 0
+        self._layout_signature = (0, 0)
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True)
         self.canvas = scroll.canvas
@@ -643,16 +649,25 @@ class Dashboard(ttk.Frame):
         if not self.cards:
             return
         width = event.width if event is not None else self.canvas.winfo_width()
-        available = max(self.card_width, width - 36)
+        available = max(self.minimum_card_width, width - 36)
         columns = max(
             1,
             (available + self.card_gap)
-            // (self.card_width + self.card_gap),
+            // (self.minimum_card_width + self.card_gap),
         )
-        if columns == self._column_count:
+        card_width = min(
+            self.maximum_card_width,
+            max(
+                self.minimum_card_width,
+                (available - (columns - 1) * self.card_gap) // columns,
+            ),
+        )
+        signature = (columns, card_width)
+        if signature == self._layout_signature:
             return
-        self._column_count = columns
+        self._layout_signature = signature
         for index, card in enumerate(self.cards):
+            card.configure(width=card_width, height=card_width)
             card.grid(
                 row=index // columns,
                 column=index % columns,
@@ -879,7 +894,8 @@ class HardwareDialog(tk.Toplevel):
         self.app = app
         self.title("Hardware Devices")
         self.geometry("940x570")
-        self.minsize(860, 520)
+        self.minsize(760, 500)
+        self.resizable(True, True)
         self.transient(app)
         self.grab_set()
         self.selected_index: int | None = None
@@ -1209,11 +1225,13 @@ class G2DTCApplication(tk.Tk):
         )
         self.status_var = tk.StringVar(value="Ready")
         self._closing = False
+        self.commit_sha = current_commit_sha()
         self.registry = DeviceRegistry(self.config, log_callback=self._device_log)
 
         self.title("G2DTC · General 2D Material Transfer Controller")
-        self.geometry("1540x920")
-        self.minsize(1180, 720)
+        self.geometry("1440x900")
+        self.minsize(900, 640)
+        self.resizable(True, True)
         self.configure(background=COLORS["background"])
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _event: self.stop_all_motors())
@@ -1225,15 +1243,13 @@ class G2DTCApplication(tk.Tk):
         style = ttk.Style(self)
         if "clam" in style.theme_names():
             style.theme_use("clam")
-        style.configure(".", font=("Helvetica Neue", 11))
+        style.configure(".", font=("Helvetica Neue", 12))
         style.configure(
             "TButton",
             foreground=COLORS["text"],
             background=COLORS["surface_alt"],
-            bordercolor=COLORS["border"],
-            lightcolor=COLORS["border"],
-            darkcolor=COLORS["border"],
-            padding=(9, 6),
+            borderwidth=0,
+            padding=(11, 8),
         )
         style.map(
             "TButton",
@@ -1241,21 +1257,19 @@ class G2DTCApplication(tk.Tk):
         )
         style.configure(
             "TEntry",
-            fieldbackground=COLORS["surface"],
+            fieldbackground=COLORS["surface_alt"],
             foreground=COLORS["text"],
-            bordercolor=COLORS["border"],
-            lightcolor=COLORS["border"],
-            darkcolor=COLORS["border"],
-            padding=5,
+            borderwidth=0,
+            padding=7,
         )
         style.configure(
             "TCombobox",
-            fieldbackground=COLORS["surface"],
-            background=COLORS["surface"],
+            fieldbackground=COLORS["surface_alt"],
+            background=COLORS["surface_alt"],
             foreground=COLORS["text"],
-            bordercolor=COLORS["border"],
             arrowcolor=COLORS["muted"],
-            padding=4,
+            borderwidth=0,
+            padding=6,
         )
         style.configure(
             "TNotebook",
@@ -1284,68 +1298,73 @@ class G2DTCApplication(tk.Tk):
             "HeaderTitle.TLabel",
             background=COLORS["header"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 19, "bold"),
+            font=("Helvetica Neue", 22, "bold"),
         )
         style.configure(
             "HeaderSub.TLabel",
             background=COLORS["header"],
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 10),
+            font=("Helvetica Neue", 11),
+        )
+        style.configure(
+            "VersionLink.TLabel",
+            background=COLORS["header"],
+            foreground=COLORS["accent"],
+            font=("Helvetica Neue", 9),
         )
         style.configure(
             "Card.TFrame",
             background=COLORS["surface"],
-            relief="solid",
-            borderwidth=1,
-            bordercolor=COLORS["border"],
+            relief="flat",
+            borderwidth=0,
         )
         style.configure(
             "CardTitle.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 13, "bold"),
+            font=("Helvetica Neue", 17, "bold"),
         )
         style.configure(
             "ModuleMeta.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["accent"],
-            font=("Helvetica Neue", 8, "bold"),
+            font=("Helvetica Neue", 10, "bold"),
         )
         style.configure(
             "DeviceName.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 9),
+            font=("Helvetica Neue", 11),
         )
         style.configure(
             "Status.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["success"],
-            font=("Helvetica Neue", 9, "bold"),
+            font=("Helvetica Neue", 10, "bold"),
         )
         style.configure(
             "Value.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["text"],
-            font=("Menlo", 22, "bold"),
+            font=("Menlo", 30, "bold"),
         )
         style.configure(
             "TemperatureValue.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["accent"],
-            font=("Menlo", 26, "bold"),
+            font=("Menlo", 32, "bold"),
         )
         style.configure(
             "Unit.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 10),
+            font=("Helvetica Neue", 12),
         )
         style.configure(
             "RightStatus.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 9),
+            font=("Helvetica Neue", 10),
         )
         style.configure(
             "Field.TLabel",
@@ -1356,19 +1375,19 @@ class G2DTCApplication(tk.Tk):
             "Hint.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 9),
+            font=("Helvetica Neue", 10),
         )
         style.configure(
             "Error.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["danger"],
-            font=("Helvetica Neue", 9),
+            font=("Helvetica Neue", 10),
         )
         style.configure(
             "PageTitle.TLabel",
             background=COLORS["background"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 22, "bold"),
+            font=("Helvetica Neue", 24, "bold"),
         )
         style.configure(
             "Muted.TLabel",
@@ -1378,15 +1397,14 @@ class G2DTCApplication(tk.Tk):
         style.configure(
             "EmptyState.TFrame",
             background=COLORS["surface"],
-            relief="solid",
-            borderwidth=1,
-            bordercolor=COLORS["border"],
+            relief="flat",
+            borderwidth=0,
         )
         style.configure(
             "EmptyStateTitle.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 16, "bold"),
+            font=("Helvetica Neue", 18, "bold"),
         )
         style.configure(
             "EmptyStateText.TLabel",
@@ -1403,23 +1421,28 @@ class G2DTCApplication(tk.Tk):
             background=COLORS["surface"],
             foreground=COLORS["text"],
         )
-        style.configure("Strong.TLabel", font=("Helvetica Neue", 11, "bold"))
-        style.configure("Kind.TLabel", foreground=COLORS["accent"])
+        style.configure("Strong.TLabel", font=("Helvetica Neue", 12, "bold"))
+        style.configure(
+            "Kind.TLabel",
+            foreground=COLORS["accent"],
+            font=("Helvetica Neue", 11),
+        )
         style.configure(
             "TableHeader.TLabel",
             foreground=COLORS["muted"],
-            font=("Helvetica Neue", 10, "bold"),
+            font=("Helvetica Neue", 11, "bold"),
         )
         style.configure(
             "Group.TLabelframe",
             background=COLORS["background"],
             relief="flat",
+            borderwidth=0,
         )
         style.configure(
             "Group.TLabelframe.Label",
             background=COLORS["background"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 16, "bold"),
+            font=("Helvetica Neue", 17, "bold"),
         )
         style.configure(
             "Accent.TButton",
@@ -1445,8 +1468,8 @@ class G2DTCApplication(tk.Tk):
         )
         style.configure(
             "Small.TButton",
-            padding=(7, 4),
-            font=("Helvetica Neue", 9),
+            padding=(9, 6),
+            font=("Helvetica Neue", 10),
         )
         style.configure(
             "Header.TButton",
@@ -1465,9 +1488,26 @@ class G2DTCApplication(tk.Tk):
         header.pack(fill="x")
         title_area = ttk.Frame(header, style="Header.TFrame")
         title_area.pack(side="left")
+        title_row = ttk.Frame(title_area, style="Header.TFrame")
+        title_row.pack(anchor="w")
         ttk.Label(
-            title_area, text="G2DTC", style="HeaderTitle.TLabel"
-        ).pack(anchor="w")
+            title_row,
+            text="G2DTC",
+            style="HeaderTitle.TLabel",
+        ).pack(side="left")
+        version_label = ttk.Label(
+            title_row,
+            text=f"commit {self.commit_sha}  ·  {REPOSITORY_URL}",
+            style="VersionLink.TLabel",
+            cursor="hand2",
+        )
+        version_label.pack(side="left", padx=(14, 0), pady=(7, 0))
+        version_label.bind(
+            "<Button-1>",
+            lambda _event: webbrowser.open_new_tab(
+                source_url(self.commit_sha)
+            ),
+        )
         ttk.Label(
             title_area,
             text="General 2D Material Transfer Controller",
