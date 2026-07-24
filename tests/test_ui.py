@@ -10,7 +10,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from g2dtc.config import MANUAL_ASSIGNMENT
 from g2dtc.ui import (
@@ -91,6 +91,21 @@ class UserInterfaceTests(unittest.TestCase):
     def test_version_metadata_uses_seven_character_sha(self) -> None:
         if self.window.commit_sha != "unavailable":
             self.assertEqual(len(self.window.commit_sha), 7)
+        version = self.window.findChild(QLabel, "appVersion")
+        self.assertIn(self.window.commit_sha, version.text())
+        self.assertNotIn("G2DTC ·", version.text())
+
+    def test_tab_pages_do_not_repeat_navigation_titles(self) -> None:
+        dashboard_labels = {
+            label.text() for label in self.window.dashboard.findChildren(QLabel)
+        }
+        self.window.set_current_page(1)
+        assignment_page = self.window.stack.currentWidget()
+        assignment_labels = {
+            label.text() for label in assignment_page.findChildren(QLabel)
+        }
+        self.assertNotIn("Dashboard", dashboard_labels)
+        self.assertNotIn("Assignments", assignment_labels)
 
 
 if __name__ == "__main__":

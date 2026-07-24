@@ -87,6 +87,10 @@ QLabel#appMeta {
     color: #667085;
     font-size: 15px;
 }
+QLabel#appVersion {
+    color: #2864DC;
+    font-size: 15px;
+}
 QLabel#pageTitle {
     font-size: 30px;
     font-weight: 700;
@@ -930,11 +934,8 @@ class DashboardPage(ScrollPage):
         self.window = window
         self.cards: list[DeviceCard] = []
         layout = QVBoxLayout(self.body)
-        layout.setContentsMargins(28, 26, 28, 30)
+        layout.setContentsMargins(28, 22, 28, 30)
         layout.setSpacing(20)
-        title = QLabel("Dashboard")
-        title.setObjectName("pageTitle")
-        layout.addWidget(title)
 
         self.card_host = QWidget()
         self.card_host.setObjectName("scrollBody")
@@ -993,13 +994,11 @@ class AssignmentPage(ScrollPage):
         self.id_to_display: dict[str, str] = {MANUAL_ASSIGNMENT: "Manual"}
 
         layout = QVBoxLayout(self.body)
-        layout.setContentsMargins(28, 26, 28, 30)
+        layout.setContentsMargins(28, 22, 28, 30)
         layout.setSpacing(18)
 
         top = QHBoxLayout()
-        title = QLabel("Assignments")
-        title.setObjectName("pageTitle")
-        top.addWidget(title, 1)
+        top.addStretch(1)
         hardware = QPushButton("Hardware")
         hardware.setProperty("role", "soft")
         hardware.clicked.connect(window.open_hardware_dialog)
@@ -1469,20 +1468,26 @@ class G2DTCWindow(QMainWindow):
         header_layout.setSpacing(14)
         title_area = QVBoxLayout()
         title_area.setSpacing(2)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(20)
         title = QLabel("G2DTC")
         title.setObjectName("appTitle")
-        title_area.addWidget(title)
-        metadata = QLabel(
-            "General 2D Material Transfer Controller  ·  "
+        title_row.addWidget(title)
+        version = QLabel(
             f"<a href=\"{source_url(self.commit_sha)}\">"
             f"{self.commit_sha}  ·  {REPOSITORY_URL}</a>"
         )
-        metadata.setObjectName("appMeta")
-        metadata.setTextFormat(Qt.TextFormat.RichText)
-        metadata.setTextInteractionFlags(
+        version.setObjectName("appVersion")
+        version.setTextFormat(Qt.TextFormat.RichText)
+        version.setTextInteractionFlags(
             Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
-        metadata.setOpenExternalLinks(True)
+        version.setOpenExternalLinks(True)
+        title_row.addWidget(version)
+        title_row.addStretch(1)
+        title_area.addLayout(title_row)
+        metadata = QLabel("General 2D Material Transfer Controller")
+        metadata.setObjectName("appMeta")
         title_area.addWidget(metadata)
         header_layout.addLayout(title_area, 1)
         stop_button = QPushButton("Stop all  Esc")
