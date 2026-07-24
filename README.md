@@ -15,9 +15,11 @@ control, or left unassigned.
 - Microscope: X, Y, and Z
 - 10 motion degrees of freedom and 1 temperature-control channel
 - Flexible device assignment without duplicate use of a physical device
-- A control panel appears only when a device is assigned
-- Manual mode never sends hardware commands
-- Unassigned slots remain empty
+- A compact dashboard module appears only when hardware is assigned
+- Manual mode never sends hardware commands or creates a dashboard module
+- Unassigned slots do not create dashboard modules
+- Responsive square-card dashboard with device type and controlled degree of
+  freedom shown on every module
 - Assignments and hardware settings are saved automatically
 - Serial operations run in worker threads and do not block the window
 - `Esc` or the header button stops all connected motors
@@ -88,9 +90,10 @@ available:
 g2dtc
 ```
 
-The first launch uses simulation mode. Ten simulated motors and one simulated
-temperature controller are assigned to all available slots so movement, jogging,
-temperature setpoint, and output controls can be tested immediately.
+The first launch uses simulation mode so simulated devices are immediately
+available in the **Assignments** tab. All degrees of freedom start unassigned,
+and the Dashboard remains empty until hardware is selected. Choose
+**Manual (no instrument)** when a degree of freedom is operated by hand.
 
 ## Configuring Real Hardware
 
@@ -99,8 +102,8 @@ temperature setpoint, and output controls can be tested immediately.
 3. Select **Hardware devices...**.
 4. Add an ESP300, PZC200, or OMEGA CNi8 controller.
 5. Enter the device ID, serial port, and communication settings.
-6. Save the device, then assign it or choose **Manual control** for each degree
-   of freedom.
+6. Save the device, then assign it or choose **Manual (no instrument)** for each
+   degree of freedom.
 
 Common serial-port formats:
 

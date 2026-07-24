@@ -12,12 +12,12 @@ from tkinter import messagebox, ttk
 from typing import Any, Callable
 
 from .config import (
-    GROUPS,
     MANUAL_ASSIGNMENT,
     SLOTS,
     SLOT_BY_KEY,
     AppConfig,
     SlotDefinition,
+    is_hardware_assignment,
     load_config,
     save_config,
 )
@@ -25,18 +25,20 @@ from .registry import DeviceRegistry, SUPPORTED_DEVICE_TYPES
 
 
 COLORS = {
-    "background": "#F3F6FA",
+    "background": "#F7F9FC",
     "surface": "#FFFFFF",
-    "surface_alt": "#EEF3F8",
-    "border": "#D8E0EA",
-    "text": "#172033",
-    "muted": "#65748B",
+    "surface_alt": "#F0F4F8",
+    "border": "#DCE3EC",
+    "text": "#1D2939",
+    "muted": "#667085",
     "accent": "#2563EB",
     "accent_dark": "#1D4ED8",
+    "accent_soft": "#EAF2FF",
     "success": "#16835A",
     "warning": "#B7791F",
-    "danger": "#C43D3D",
-    "header": "#13213C",
+    "danger": "#B42318",
+    "danger_soft": "#FEF3F2",
+    "header": "#FFFFFF",
 }
 
 
@@ -89,8 +91,8 @@ class SlotCard(ttk.Frame):
         super().__init__(
             master,
             style=style,
-            width=250,
-            height=250,
+            width=276,
+            height=276,
             padding=(14, 12),
         )
         self.app = app
@@ -117,60 +119,6 @@ class SlotCard(ttk.Frame):
         )
 
 
-class EmptySlotCard(SlotCard):
-    def __init__(
-        self,
-        master: tk.Misc,
-        app: "G2DTCApplication",
-        slot: SlotDefinition,
-        *,
-        missing_device: str | None = None,
-    ) -> None:
-        super().__init__(master, app, slot, style="EmptyCard.TFrame")
-        ttk.Label(
-            self,
-            text=slot.label,
-            style="CardTitle.TLabel",
-        ).pack(anchor="w")
-        message = (
-            f"Device not found\n{missing_device}"
-            if missing_device
-            else "Unassigned\nSelect a device on the Assignments tab"
-        )
-        ttk.Label(
-            self,
-            text=message,
-            style="Empty.TLabel",
-            anchor="center",
-            justify="center",
-        ).pack(fill="both", expand=True, pady=(16, 4))
-
-
-class ManualSlotCard(SlotCard):
-    def __init__(
-        self,
-        master: tk.Misc,
-        app: "G2DTCApplication",
-        slot: SlotDefinition,
-    ) -> None:
-        super().__init__(master, app, slot, style="ManualCard.TFrame")
-        ttk.Label(self, text=slot.label, style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(
-            self,
-            text="MANUAL",
-            style="ManualBadge.TLabel",
-        ).pack(anchor="w", pady=(10, 0))
-        ttk.Label(
-            self,
-            text=(
-                "This degree of freedom is operated manually\n"
-                "The application will not send device commands"
-            ),
-            style="Empty.TLabel",
-            justify="left",
-        ).pack(anchor="w", pady=(20, 0))
-
-
 class DeviceSlotCard(SlotCard):
     poll_interval_ms = 900
 
@@ -190,7 +138,9 @@ class DeviceSlotCard(SlotCard):
         header = ttk.Frame(self, style="Card.TFrame")
         header.pack(fill="x")
         ttk.Label(
-            header, text=slot.label, style="CardTitle.TLabel"
+            header,
+            text=f"{slot.group_label} · {slot.label}",
+            style="CardTitle.TLabel",
         ).pack(side="left")
         self.connect_button = ttk.Button(
             header,
@@ -200,16 +150,24 @@ class DeviceSlotCard(SlotCard):
             command=self.toggle_connection,
         )
         self.connect_button.pack(side="right")
+        kind_label = "Motor" if slot.kind == "motor" else "Temperature"
         ttk.Label(
             self,
+            text=f"{kind_label.upper()}  ·  {app.registry.source(driver.device_id).upper()}",
+            style="ModuleMeta.TLabel",
+        ).pack(anchor="w", pady=(5, 0))
+        details = ttk.Frame(self, style="Card.TFrame")
+        details.pack(fill="x", pady=(3, 0))
+        ttk.Label(
+            details,
             text=str(getattr(driver, "display_name", driver.device_id)),
             style="DeviceName.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
+        ).pack(side="left")
         ttk.Label(
-            self,
+            details,
             textvariable=self.connection_var,
             style="Status.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
+        ).pack(side="right")
 
     def start_polling(self) -> None:
         self.after(120, self._poll)
@@ -520,6 +478,7 @@ class TemperatureSlotCard(DeviceSlotCard):
             self,
             text="Persist to EEPROM",
             variable=self.persist_var,
+            style="Card.TCheckbutton",
         ).pack(anchor="w")
         ttk.Button(
             self,
@@ -609,49 +568,111 @@ class TemperatureSlotCard(DeviceSlotCard):
 
 
 class Dashboard(ttk.Frame):
+    card_width = 276
+    card_gap = 12
+
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
         super().__init__(master, style="Page.TFrame")
         self.app = app
+        self.cards: list[SlotCard] = []
+        self._column_count = 0
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True)
+        self.canvas = scroll.canvas
         self.content = scroll.inner
         self._build()
+        self.canvas.bind("<Configure>", self._relayout, add="+")
 
     def _build(self) -> None:
-        for group_key, group_label in GROUPS:
-            group = ttk.LabelFrame(
-                self.content,
-                text=group_label,
-                style="Group.TLabelframe",
-                padding=(12, 10),
-            )
-            group.pack(fill="x", padx=18, pady=(14, 2))
-            slots = [slot for slot in SLOTS if slot.group == group_key]
-            for column, slot in enumerate(slots):
-                group.columnconfigure(column, weight=1)
-                card = self._make_card(group, slot)
-                card.grid(
-                    row=0,
-                    column=column,
-                    sticky="nsew",
-                    padx=(0 if column == 0 else 6, 0 if column == len(slots) - 1 else 6),
-                    pady=2,
-                )
+        heading = ttk.Frame(self.content, style="Page.TFrame")
+        heading.pack(fill="x", padx=24, pady=(22, 10))
+        ttk.Label(
+            heading,
+            text="Instrument Dashboard",
+            style="PageTitle.TLabel",
+        ).pack(anchor="w")
 
-    def _make_card(self, master: tk.Misc, slot: SlotDefinition) -> SlotCard:
+        self.card_grid = ttk.Frame(self.content, style="Page.TFrame")
+        self.card_grid.pack(fill="both", expand=True, padx=18, pady=(0, 24))
+        self.cards = [
+            card
+            for slot in SLOTS
+            if (card := self._make_card(self.card_grid, slot)) is not None
+        ]
+
+        if self.cards:
+            ttk.Label(
+                heading,
+                text=(
+                    f"{len(self.cards)} assigned instrument modules · "
+                    "Manual and unassigned controls are hidden"
+                ),
+                style="Muted.TLabel",
+            ).pack(anchor="w", pady=(3, 0))
+            self.after_idle(self._relayout)
+            return
+
+        ttk.Label(
+            heading,
+            text="Only assigned hardware appears on this page",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(3, 0))
+        empty = ttk.Frame(
+            self.card_grid,
+            style="EmptyState.TFrame",
+            padding=(36, 42),
+        )
+        empty.pack(fill="x", padx=6, pady=6)
+        ttk.Label(
+            empty,
+            text="No instruments assigned",
+            style="EmptyStateTitle.TLabel",
+        ).pack()
+        ttk.Label(
+            empty,
+            text=(
+                "Open Assignments to select hardware. Manual and Unassigned "
+                "degrees of freedom do not create dashboard modules."
+            ),
+            style="EmptyStateText.TLabel",
+            wraplength=620,
+            justify="center",
+        ).pack(pady=(8, 0))
+
+    def _relayout(self, event: tk.Event[Any] | None = None) -> None:
+        if not self.cards:
+            return
+        width = event.width if event is not None else self.canvas.winfo_width()
+        available = max(self.card_width, width - 36)
+        columns = max(
+            1,
+            (available + self.card_gap)
+            // (self.card_width + self.card_gap),
+        )
+        if columns == self._column_count:
+            return
+        self._column_count = columns
+        for index, card in enumerate(self.cards):
+            card.grid(
+                row=index // columns,
+                column=index % columns,
+                padx=self.card_gap // 2,
+                pady=self.card_gap // 2,
+                sticky="nw",
+            )
+
+    def _make_card(
+        self,
+        master: tk.Misc,
+        slot: SlotDefinition,
+    ) -> SlotCard | None:
         assigned = self.app.config.assignments.get(slot.key)
-        if not assigned:
-            return EmptySlotCard(master, self.app, slot)
-        if assigned == MANUAL_ASSIGNMENT:
-            return ManualSlotCard(master, self.app, slot)
+        if not is_hardware_assignment(assigned):
+            return None
+        assert assigned is not None
         driver = self.app.registry.get(assigned)
         if driver is None:
-            return EmptySlotCard(
-                master,
-                self.app,
-                slot,
-                missing_device=assigned,
-            )
+            return None
         if slot.kind == "motor":
             return MotorSlotCard(master, self.app, slot, driver)
         return TemperatureSlotCard(master, self.app, slot, driver)
@@ -659,7 +680,7 @@ class Dashboard(ttk.Frame):
 
 class AssignmentPage(ttk.Frame):
     UNASSIGNED = "— Unassigned —"
-    MANUAL = "Manual control"
+    MANUAL = "Manual (no instrument)"
 
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
         super().__init__(master, style="Page.TFrame", padding=18)
@@ -694,8 +715,8 @@ class AssignmentPage(ttk.Frame):
         ttk.Label(
             top,
             text=(
-                "Each physical device can be assigned only once; "
-                "changes are saved automatically"
+                "Choose hardware or Manual. Manual and Unassigned stay hidden "
+                "from the Dashboard."
             ),
             style="Muted.TLabel",
         ).pack(side="left", padx=(14, 0), pady=(8, 0))
@@ -709,6 +730,7 @@ class AssignmentPage(ttk.Frame):
             top,
             text="Simulation mode",
             variable=demo_var,
+            style="Page.TCheckbutton",
             command=lambda: self.app.set_simulation(demo_var.get()),
         ).pack(side="right", padx=12)
 
@@ -962,6 +984,7 @@ class HardwareDialog(tk.Toplevel):
             right,
             text="Enable this device",
             variable=self.variables["enabled"],
+            style="Card.TCheckbutton",
         ).grid(row=11, column=1, sticky="w", pady=(8, 4))
         ttk.Label(
             right,
@@ -1203,38 +1226,239 @@ class G2DTCApplication(tk.Tk):
         if "clam" in style.theme_names():
             style.theme_use("clam")
         style.configure(".", font=("Helvetica Neue", 11))
+        style.configure(
+            "TButton",
+            foreground=COLORS["text"],
+            background=COLORS["surface_alt"],
+            bordercolor=COLORS["border"],
+            lightcolor=COLORS["border"],
+            darkcolor=COLORS["border"],
+            padding=(9, 6),
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#E7EDF5")],
+        )
+        style.configure(
+            "TEntry",
+            fieldbackground=COLORS["surface"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border"],
+            lightcolor=COLORS["border"],
+            darkcolor=COLORS["border"],
+            padding=5,
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground=COLORS["surface"],
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border"],
+            arrowcolor=COLORS["muted"],
+            padding=4,
+        )
+        style.configure(
+            "TNotebook",
+            background=COLORS["background"],
+            borderwidth=0,
+            tabmargins=(18, 10, 0, 0),
+        )
+        style.configure(
+            "TNotebook.Tab",
+            background=COLORS["surface_alt"],
+            foreground=COLORS["muted"],
+            borderwidth=0,
+            padding=(18, 8),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", COLORS["surface"])],
+            foreground=[("selected", COLORS["accent"])],
+        )
         style.configure("Page.TFrame", background=COLORS["background"])
-        style.configure("Header.TFrame", background=COLORS["header"])
-        style.configure("HeaderTitle.TLabel", background=COLORS["header"], foreground="white", font=("Helvetica Neue", 19, "bold"))
-        style.configure("HeaderSub.TLabel", background=COLORS["header"], foreground="#B9C6DA", font=("Helvetica Neue", 10))
-        style.configure("Card.TFrame", background=COLORS["surface"], relief="solid", borderwidth=1)
-        style.configure("EmptyCard.TFrame", background=COLORS["surface_alt"], relief="solid", borderwidth=1)
-        style.configure("ManualCard.TFrame", background="#FFF9E9", relief="solid", borderwidth=1)
-        style.configure("CardTitle.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Helvetica Neue", 15, "bold"))
-        style.configure("DeviceName.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Helvetica Neue", 9))
-        style.configure("Status.TLabel", background=COLORS["surface"], foreground=COLORS["success"], font=("Helvetica Neue", 9, "bold"))
-        style.configure("Value.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Menlo", 24, "bold"))
-        style.configure("TemperatureValue.TLabel", background=COLORS["surface"], foreground=COLORS["accent"], font=("Menlo", 28, "bold"))
-        style.configure("Unit.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Helvetica Neue", 10))
-        style.configure("RightStatus.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Helvetica Neue", 9))
-        style.configure("Field.TLabel", background=COLORS["surface"], foreground=COLORS["muted"])
-        style.configure("Hint.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Helvetica Neue", 9))
-        style.configure("Error.TLabel", background=COLORS["surface"], foreground=COLORS["danger"], font=("Helvetica Neue", 9))
-        style.configure("Empty.TLabel", background=COLORS["surface_alt"], foreground=COLORS["muted"], font=("Helvetica Neue", 11))
-        style.configure("ManualBadge.TLabel", background="#F7E9AF", foreground="#805E00", padding=(8, 4), font=("Helvetica Neue", 9, "bold"))
-        style.configure("PageTitle.TLabel", background=COLORS["background"], foreground=COLORS["text"], font=("Helvetica Neue", 22, "bold"))
-        style.configure("Muted.TLabel", background=COLORS["background"], foreground=COLORS["muted"])
+        style.configure(
+            "Header.TFrame",
+            background=COLORS["header"],
+        )
+        style.configure(
+            "HeaderTitle.TLabel",
+            background=COLORS["header"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 19, "bold"),
+        )
+        style.configure(
+            "HeaderSub.TLabel",
+            background=COLORS["header"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 10),
+        )
+        style.configure(
+            "Card.TFrame",
+            background=COLORS["surface"],
+            relief="solid",
+            borderwidth=1,
+            bordercolor=COLORS["border"],
+        )
+        style.configure(
+            "CardTitle.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 13, "bold"),
+        )
+        style.configure(
+            "ModuleMeta.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["accent"],
+            font=("Helvetica Neue", 8, "bold"),
+        )
+        style.configure(
+            "DeviceName.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 9),
+        )
+        style.configure(
+            "Status.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["success"],
+            font=("Helvetica Neue", 9, "bold"),
+        )
+        style.configure(
+            "Value.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            font=("Menlo", 22, "bold"),
+        )
+        style.configure(
+            "TemperatureValue.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["accent"],
+            font=("Menlo", 26, "bold"),
+        )
+        style.configure(
+            "Unit.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 10),
+        )
+        style.configure(
+            "RightStatus.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 9),
+        )
+        style.configure(
+            "Field.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+        )
+        style.configure(
+            "Hint.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 9),
+        )
+        style.configure(
+            "Error.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["danger"],
+            font=("Helvetica Neue", 9),
+        )
+        style.configure(
+            "PageTitle.TLabel",
+            background=COLORS["background"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 22, "bold"),
+        )
+        style.configure(
+            "Muted.TLabel",
+            background=COLORS["background"],
+            foreground=COLORS["muted"],
+        )
+        style.configure(
+            "EmptyState.TFrame",
+            background=COLORS["surface"],
+            relief="solid",
+            borderwidth=1,
+            bordercolor=COLORS["border"],
+        )
+        style.configure(
+            "EmptyStateTitle.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 16, "bold"),
+        )
+        style.configure(
+            "EmptyStateText.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+        )
+        style.configure(
+            "Page.TCheckbutton",
+            background=COLORS["background"],
+            foreground=COLORS["text"],
+        )
+        style.configure(
+            "Card.TCheckbutton",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+        )
         style.configure("Strong.TLabel", font=("Helvetica Neue", 11, "bold"))
         style.configure("Kind.TLabel", foreground=COLORS["accent"])
-        style.configure("TableHeader.TLabel", foreground=COLORS["muted"], font=("Helvetica Neue", 10, "bold"))
-        style.configure("Group.TLabelframe", background=COLORS["background"], relief="flat")
-        style.configure("Group.TLabelframe.Label", background=COLORS["background"], foreground=COLORS["text"], font=("Helvetica Neue", 16, "bold"))
-        style.configure("Accent.TButton", foreground="white", background=COLORS["accent"], borderwidth=0, padding=(10, 7))
-        style.map("Accent.TButton", background=[("active", COLORS["accent_dark"])])
-        style.configure("Danger.TButton", foreground="white", background=COLORS["danger"], borderwidth=0, padding=(8, 5))
-        style.configure("Small.TButton", padding=(7, 4), font=("Helvetica Neue", 9))
-        style.configure("Header.TButton", foreground="white", background="#243657", borderwidth=0, padding=(12, 7))
-        style.map("Header.TButton", background=[("active", "#31496F")])
+        style.configure(
+            "TableHeader.TLabel",
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 10, "bold"),
+        )
+        style.configure(
+            "Group.TLabelframe",
+            background=COLORS["background"],
+            relief="flat",
+        )
+        style.configure(
+            "Group.TLabelframe.Label",
+            background=COLORS["background"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 16, "bold"),
+        )
+        style.configure(
+            "Accent.TButton",
+            foreground="white",
+            background=COLORS["accent"],
+            borderwidth=0,
+            padding=(10, 7),
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("active", COLORS["accent_dark"])],
+        )
+        style.configure(
+            "Danger.TButton",
+            foreground=COLORS["danger"],
+            background=COLORS["danger_soft"],
+            borderwidth=0,
+            padding=(8, 5),
+        )
+        style.map(
+            "Danger.TButton",
+            background=[("active", "#FEE4E2")],
+        )
+        style.configure(
+            "Small.TButton",
+            padding=(7, 4),
+            font=("Helvetica Neue", 9),
+        )
+        style.configure(
+            "Header.TButton",
+            foreground=COLORS["accent"],
+            background=COLORS["accent_soft"],
+            borderwidth=0,
+            padding=(12, 7),
+        )
+        style.map(
+            "Header.TButton",
+            background=[("active", "#DCEAFF")],
+        )
 
     def _build_shell(self) -> None:
         header = ttk.Frame(self, style="Header.TFrame", padding=(20, 13))

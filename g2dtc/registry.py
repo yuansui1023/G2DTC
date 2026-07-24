@@ -54,6 +54,9 @@ class DeviceRegistry:
     def get(self, device_id: str) -> Any | None:
         return self._drivers.get(device_id)
 
+    def source(self, device_id: str) -> str:
+        return self._sources.get(device_id, "Unknown")
+
     def require(self, device_id: str) -> Any:
         try:
             return self._drivers[device_id]
