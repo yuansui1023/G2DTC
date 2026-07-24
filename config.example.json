@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "simulation": false,
   "devices": [
     {
@@ -51,7 +51,7 @@
     "stage.x": "esp300.stage.axis1",
     "stage.y": "esp300.stage.axis2",
     "stage.z": "esp300.stage.axis3",
-    "stage.rz": null,
+    "stage.rz": "__manual__",
     "stage.temperature": "temperature.stage",
     "microscope.x": "__manual__",
     "microscope.y": "__manual__",

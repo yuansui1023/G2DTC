@@ -5,8 +5,8 @@ two-dimensional material transfer system.
 
 G2DTC separates the logical degrees of freedom in the experiment from the
 connected hardware. Transfer Arm, Stage, and Microscope always keep the same
-layout, while every degree of freedom can be assigned to a motor, set to manual
-control, or left unassigned.
+layout, while every degree of freedom can be assigned to hardware or set to
+manual control.
 
 ## Features
 
@@ -17,9 +17,8 @@ control, or left unassigned.
 - Flexible device assignment without duplicate use of a physical device
 - A compact dashboard module appears only when hardware is assigned
 - Manual mode never sends hardware commands or creates a dashboard module
-- Unassigned slots do not create dashboard modules
-- Borderless, responsive instrument modules that resize and reflow with the
-  application window
+- Borderless instrument modules with individual drag resizing and automatic
+  reflow
 - Large module typography with the device type and controlled degree of freedom
   shown on every module
 - Runtime Git commit SHA and GitHub source link in the title area
@@ -94,9 +93,8 @@ g2dtc
 ```
 
 The first launch uses simulation mode so simulated devices are immediately
-available in the **Assignments** tab. All degrees of freedom start unassigned,
-and the Dashboard remains empty until hardware is selected. Choose
-**Manual (no instrument)** when a degree of freedom is operated by hand.
+available in the **Assignments** tab. All degrees of freedom start in
+**Manual** mode, and the Dashboard remains empty until hardware is selected.
 
 ## Configuring Real Hardware
 
@@ -105,8 +103,8 @@ and the Dashboard remains empty until hardware is selected. Choose
 3. Select **Hardware devices...**.
 4. Add an ESP300, PZC200, or OMEGA CNi8 controller.
 5. Enter the device ID, serial port, and communication settings.
-6. Save the device, then assign it or choose **Manual (no instrument)** for each
-   degree of freedom.
+6. Save the device, then assign it or choose **Manual** for each degree of
+   freedom.
 
 Common serial-port formats:
 

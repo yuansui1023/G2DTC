@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 MANUAL_ASSIGNMENT = "__manual__"
 
 
@@ -59,8 +59,8 @@ def default_config_path() -> Path:
     return base / "g2dtc" / "config.json"
 
 
-def _default_assignments() -> dict[str, str | None]:
-    return {slot.key: None for slot in SLOTS}
+def _default_assignments() -> dict[str, str]:
+    return {slot.key: MANUAL_ASSIGNMENT for slot in SLOTS}
 
 
 def _legacy_simulation_assignments() -> dict[str, str | None]:
@@ -82,15 +82,15 @@ class AppConfig:
     version: int = CONFIG_VERSION
     simulation: bool = True
     devices: list[dict[str, Any]] = field(default_factory=list)
-    assignments: dict[str, str | None] = field(default_factory=_default_assignments)
+    assignments: dict[str, str] = field(default_factory=_default_assignments)
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "AppConfig":
         version = int(raw.get("version", CONFIG_VERSION))
-        if version not in (1, CONFIG_VERSION):
+        if version not in (1, 2, CONFIG_VERSION):
             raise ValueError(
                 f"Unsupported configuration version {version}; "
-                f"expected 1 or {CONFIG_VERSION}"
+                f"expected 1, 2, or {CONFIG_VERSION}"
             )
         devices_raw = raw.get("devices", [])
         assignments_raw = raw.get("assignments", {})
@@ -99,12 +99,12 @@ class AppConfig:
         if not isinstance(assignments_raw, Mapping):
             raise ValueError("'assignments' must be an object")
 
-        assignments: dict[str, str | None] = {}
+        assignments: dict[str, str] = {}
         for slot in SLOTS:
-            value = assignments_raw.get(slot.key)
+            value = assignments_raw.get(slot.key, MANUAL_ASSIGNMENT)
             if value is not None and not isinstance(value, str):
                 raise ValueError(f"Assignment for {slot.key} must be text or null")
-            assignments[slot.key] = value
+            assignments[slot.key] = value or MANUAL_ASSIGNMENT
         if (
             version == 1
             and bool(raw.get("simulation", False))
@@ -144,7 +144,11 @@ class AppConfig:
             "simulation": self.simulation,
             "devices": self.devices,
             "assignments": {
-                slot.key: self.assignments.get(slot.key) for slot in SLOTS
+                slot.key: self.assignments.get(
+                    slot.key,
+                    MANUAL_ASSIGNMENT,
+                )
+                for slot in SLOTS
             },
         }
 
@@ -158,17 +162,19 @@ class AppConfig:
         """
         Assign one device and return a previous slot cleared by this change.
 
-        Physical devices are exclusive. Manual and unassigned entries may be
-        used by any number of slots.
+        Physical devices are exclusive. Manual may be used by any number of
+        slots.
         """
         try:
             slot = SLOT_BY_KEY[slot_key]
         except KeyError as exc:
             raise KeyError(f"Unknown logical slot: {slot_key}") from exc
         if device_id == "":
-            device_id = None
+            device_id = MANUAL_ASSIGNMENT
+        if device_id is None:
+            device_id = MANUAL_ASSIGNMENT
         if (
-            device_id not in (None, MANUAL_ASSIGNMENT)
+            device_id != MANUAL_ASSIGNMENT
             and device_kind is not None
             and device_kind != slot.kind
         ):
@@ -177,10 +183,10 @@ class AppConfig:
             )
 
         cleared: str | None = None
-        if device_id not in (None, MANUAL_ASSIGNMENT):
+        if device_id != MANUAL_ASSIGNMENT:
             for other_key, assigned in self.assignments.items():
                 if other_key != slot_key and assigned == device_id:
-                    self.assignments[other_key] = None
+                    self.assignments[other_key] = MANUAL_ASSIGNMENT
                     cleared = other_key
                     break
         self.assignments[slot_key] = device_id
