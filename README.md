@@ -21,7 +21,10 @@ manual control.
   reflow
 - Large module typography with the device type and controlled degree of freedom
   shown on every module
-- Runtime Git commit SHA and GitHub source link in the title area
+- Modern flat tabs, grouped assignment panels, and hardware settings
+- Freely resizable main and hardware windows with horizontal and vertical
+  scrollbars
+- Product name, runtime Git SHA, and GitHub source link in the title area
 - Assignments and hardware settings are saved automatically
 - Serial operations run in worker threads and do not block the window
 - `Esc` or the header button stops all connected motors

@@ -46,34 +46,56 @@ COLORS = {
 
 class ScrollFrame(ttk.Frame):
     def __init__(self, master: tk.Misc) -> None:
-        super().__init__(master)
+        super().__init__(master, style="Page.TFrame")
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
         self.canvas = tk.Canvas(
             self,
             background=COLORS["background"],
             highlightthickness=0,
         )
+        vertical = ttk.Scrollbar(
+            self,
+            orient="vertical",
+            command=self.canvas.yview,
+        )
+        horizontal = ttk.Scrollbar(
+            self,
+            orient="horizontal",
+            command=self.canvas.xview,
+        )
         self.inner = ttk.Frame(self.canvas, style="Page.TFrame")
         self.window = self.canvas.create_window(
             (0, 0), window=self.inner, anchor="nw"
         )
-        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.configure(
+            xscrollcommand=horizontal.set,
+            yscrollcommand=vertical.set,
+        )
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
         self.inner.bind(
             "<Configure>",
             lambda _event: self.canvas.configure(
                 scrollregion=self.canvas.bbox("all")
             ),
         )
-        self.canvas.bind(
-            "<Configure>",
-            lambda event: self.canvas.itemconfigure(
-                self.window, width=event.width
-            ),
-        )
+        self.canvas.bind("<Configure>", self._resize_inner)
         self.canvas.bind_all("<MouseWheel>", self._mousewheel, add="+")
+
+    def _resize_inner(self, event: tk.Event[Any]) -> None:
+        width = max(event.width, self.inner.winfo_reqwidth())
+        height = max(event.height, self.inner.winfo_reqheight())
+        self.canvas.itemconfigure(self.window, width=width, height=height)
 
     def _mousewheel(self, event: tk.Event[Any]) -> None:
         if self.winfo_containing(event.x_root, event.y_root) is not None:
-            self.canvas.yview_scroll(int(-event.delta / 120), "units")
+            amount = int(-event.delta / 120)
+            if event.state & 0x1:
+                self.canvas.xview_scroll(amount, "units")
+            else:
+                self.canvas.yview_scroll(amount, "units")
 
 
 class SlotCard(ttk.Frame):
@@ -660,6 +682,7 @@ class Dashboard(ttk.Frame):
         x = 0
         y = 0
         row_height = 0
+        widest_row = 0
         for card in self.cards:
             card_width = int(card.cget("width"))
             card_height = int(card.cget("height"))
@@ -674,8 +697,12 @@ class Dashboard(ttk.Frame):
                 height=card_height,
             )
             x += card_width + self.card_gap
+            widest_row = max(widest_row, x - self.card_gap)
             row_height = max(row_height, card_height)
-        self.card_grid.configure(height=max(1, y + row_height))
+        self.card_grid.configure(
+            width=max(1, widest_row),
+            height=max(1, y + row_height),
+        )
 
     def _make_card(
         self,
@@ -734,6 +761,7 @@ class AssignmentPage(ttk.Frame):
         ttk.Button(
             top,
             text="Hardware",
+            style="SoftAccent.TButton",
             command=lambda: HardwareDialog(self.app),
         ).pack(side="right")
         demo_var = tk.BooleanVar(value=self.app.config.simulation)
@@ -752,7 +780,11 @@ class AssignmentPage(ttk.Frame):
                 groups.append(group)
 
         for group_key, group_label in groups:
-            section = ttk.Frame(self.content, style="Page.TFrame")
+            section = ttk.Frame(
+                self.content,
+                style="Section.TFrame",
+                padding=(22, 18),
+            )
             section.pack(fill="x", padx=28, pady=(0, 24))
             ttk.Label(
                 section,
@@ -761,10 +793,14 @@ class AssignmentPage(ttk.Frame):
             ).pack(anchor="w", pady=(0, 8))
 
             for slot in (item for item in SLOTS if item.group == group_key):
-                row = ttk.Frame(section, style="Page.TFrame")
-                row.pack(fill="x", pady=5)
+                row = ttk.Frame(
+                    section,
+                    style="Section.TFrame",
+                    padding=(0, 5),
+                )
+                row.pack(fill="x")
                 row.columnconfigure(1, weight=1)
-                label_area = ttk.Frame(row, style="Page.TFrame")
+                label_area = ttk.Frame(row, style="Section.TFrame")
                 label_area.grid(row=0, column=0, sticky="w", padx=(0, 22))
                 ttk.Label(
                     label_area,
@@ -855,9 +891,10 @@ class HardwareDialog(tk.Toplevel):
         super().__init__(app)
         self.app = app
         self.title("Hardware Devices")
-        self.geometry("940x570")
-        self.minsize(760, 500)
+        self.geometry("1040x700")
+        self.minsize(640, 480)
         self.resizable(True, True)
+        self.configure(background=COLORS["background"])
         self.transient(app)
         self.grab_set()
         self.selected_index: int | None = None
@@ -878,18 +915,62 @@ class HardwareDialog(tk.Toplevel):
         self._refresh_tree()
 
     def _build(self) -> None:
-        outer = ttk.Frame(self, style="Page.TFrame", padding=16)
+        outer = ttk.Frame(self, style="Page.TFrame")
         outer.pack(fill="both", expand=True)
-        left = ttk.Frame(outer, style="Card.TFrame", padding=10)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        right = ttk.Frame(outer, style="Card.TFrame", padding=14)
-        right.pack(side="left", fill="both", expand=True, padx=(8, 0))
+
+        header = ttk.Frame(outer, style="Page.TFrame")
+        header.pack(fill="x", padx=28, pady=(24, 18))
+        ttk.Label(
+            header,
+            text="Hardware",
+            style="PageTitle.TLabel",
+        ).pack(anchor="w")
+
+        scroll = ScrollFrame(outer)
+        scroll.pack(fill="both", expand=True)
+        body = ttk.Frame(
+            scroll.inner,
+            style="Page.TFrame",
+            padding=(28, 0, 28, 28),
+        )
+        body.pack(fill="both", expand=True)
+        body.columnconfigure(0, weight=2, minsize=400)
+        body.columnconfigure(1, weight=3, minsize=500)
+        body.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(
+            body,
+            style="Section.TFrame",
+            padding=(20, 18),
+        )
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        right = ttk.Frame(
+            body,
+            style="Section.TFrame",
+            padding=(22, 18),
+        )
+        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
+        list_header = ttk.Frame(left, style="Section.TFrame")
+        list_header.pack(fill="x", pady=(0, 14))
+        ttk.Label(
+            list_header,
+            text="Devices",
+            style="SectionTitle.TLabel",
+        ).pack(side="left")
+        ttk.Button(
+            list_header,
+            text="+ Add",
+            style="SoftAccent.TButton",
+            command=self._new,
+        ).pack(side="right")
 
         self.tree = ttk.Treeview(
             left,
             columns=("type", "name", "port"),
             show="headings",
-            height=17,
+            height=14,
+            style="Modern.Treeview",
         )
         for column, text, width in (
             ("type", "Type", 100),
@@ -901,10 +982,7 @@ class HardwareDialog(tk.Toplevel):
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self._selected)
         toolbar = ttk.Frame(left, style="Card.TFrame")
-        toolbar.pack(fill="x", pady=(10, 0))
-        ttk.Button(
-            toolbar, text="New device", command=self._new
-        ).pack(side="left")
+        toolbar.pack(fill="x", pady=(12, 0))
         ttk.Button(
             toolbar,
             text="Delete",
@@ -912,8 +990,8 @@ class HardwareDialog(tk.Toplevel):
             command=self._delete,
         ).pack(side="right")
 
-        ttk.Label(right, text="Device settings", style="CardTitle.TLabel").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        ttk.Label(right, text="Settings", style="SectionTitle.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 14)
         )
         fields = (
             ("Device type", "type"),
@@ -928,8 +1006,16 @@ class HardwareDialog(tk.Toplevel):
             ("ESP300 axes", "axes"),
         )
         for row, (label, key) in enumerate(fields, 1):
-            ttk.Label(right, text=label).grid(
-                row=row, column=0, sticky="w", padx=(0, 12), pady=5
+            ttk.Label(
+                right,
+                text=label,
+                style="FormLabel.TLabel",
+            ).grid(
+                row=row,
+                column=0,
+                sticky="w",
+                padx=(0, 18),
+                pady=7,
             )
             if key == "type":
                 type_combo = ttk.Combobox(
@@ -956,7 +1042,7 @@ class HardwareDialog(tk.Toplevel):
                 )
             else:
                 widget = ttk.Entry(right, textvariable=self.variables[key])
-            widget.grid(row=row, column=1, sticky="ew", pady=5)
+            widget.grid(row=row, column=1, sticky="ew", pady=7)
         right.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             right,
@@ -975,7 +1061,7 @@ class HardwareDialog(tk.Toplevel):
         ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(8, 12))
         ttk.Button(
             right,
-            text="Save device and reload",
+            text="Save",
             style="Accent.TButton",
             command=self._save,
         ).grid(row=13, column=0, columnspan=2, sticky="ew")
@@ -1193,7 +1279,7 @@ class G2DTCApplication(tk.Tk):
 
         self.title("G2DTC · General 2D Material Transfer Controller")
         self.geometry("1440x900")
-        self.minsize(900, 640)
+        self.minsize(640, 480)
         self.resizable(True, True)
         self.configure(background=COLORS["background"])
         self.protocol("WM_DELETE_WINDOW", self.close)
@@ -1234,25 +1320,68 @@ class G2DTCApplication(tk.Tk):
             borderwidth=0,
             padding=6,
         )
+        for scrollbar_style in (
+            "Vertical.TScrollbar",
+            "Horizontal.TScrollbar",
+        ):
+            style.configure(
+                scrollbar_style,
+                background=COLORS["border"],
+                troughcolor=COLORS["background"],
+                borderwidth=0,
+                arrowcolor=COLORS["muted"],
+                lightcolor=COLORS["background"],
+                darkcolor=COLORS["background"],
+            )
         style.configure(
-            "TNotebook",
+            "Modern.TNotebook",
             background=COLORS["background"],
             borderwidth=0,
-            tabmargins=(18, 10, 0, 0),
+            tabmargins=(24, 12, 0, 0),
         )
         style.configure(
-            "TNotebook.Tab",
-            background=COLORS["surface_alt"],
+            "Modern.TNotebook.Tab",
+            background=COLORS["background"],
             foreground=COLORS["muted"],
             borderwidth=0,
-            padding=(18, 8),
+            focuscolor=COLORS["background"],
+            padding=(24, 11),
+            font=("Helvetica Neue", 13, "bold"),
         )
         style.map(
-            "TNotebook.Tab",
-            background=[("selected", COLORS["surface"])],
+            "Modern.TNotebook.Tab",
+            background=[
+                ("selected", COLORS["accent_soft"]),
+                ("active", COLORS["surface_alt"]),
+            ],
             foreground=[("selected", COLORS["accent"])],
         )
         style.configure("Page.TFrame", background=COLORS["background"])
+        style.configure("Section.TFrame", background=COLORS["surface"])
+        style.configure(
+            "Modern.Treeview",
+            background=COLORS["surface"],
+            fieldbackground=COLORS["surface"],
+            foreground=COLORS["text"],
+            borderwidth=0,
+            relief="flat",
+            rowheight=40,
+            font=("Helvetica Neue", 12),
+        )
+        style.configure(
+            "Modern.Treeview.Heading",
+            background=COLORS["surface_alt"],
+            foreground=COLORS["muted"],
+            borderwidth=0,
+            relief="flat",
+            padding=(10, 9),
+            font=("Helvetica Neue", 11, "bold"),
+        )
+        style.map(
+            "Modern.Treeview",
+            background=[("selected", COLORS["accent_soft"])],
+            foreground=[("selected", COLORS["text"])],
+        )
         style.configure(
             "Header.TFrame",
             background=COLORS["header"],
@@ -1264,10 +1393,16 @@ class G2DTCApplication(tk.Tk):
             font=("Helvetica Neue", 30, "bold"),
         )
         style.configure(
+            "HeaderSub.TLabel",
+            background=COLORS["header"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 13),
+        )
+        style.configure(
             "VersionLink.TLabel",
             background=COLORS["header"],
             foreground=COLORS["accent"],
-            font=("Helvetica Neue", 9),
+            font=("Helvetica Neue", 12),
         )
         style.configure(
             "Card.TFrame",
@@ -1375,21 +1510,27 @@ class G2DTCApplication(tk.Tk):
         )
         style.configure(
             "SectionTitle.TLabel",
-            background=COLORS["background"],
+            background=COLORS["surface"],
             foreground=COLORS["text"],
             font=("Helvetica Neue", 22, "bold"),
         )
         style.configure(
             "AssignmentName.TLabel",
-            background=COLORS["background"],
+            background=COLORS["surface"],
             foreground=COLORS["text"],
             font=("Helvetica Neue", 16, "bold"),
         )
         style.configure(
             "AssignmentKind.TLabel",
-            background=COLORS["background"],
+            background=COLORS["surface"],
             foreground=COLORS["muted"],
             font=("Helvetica Neue", 10),
+        )
+        style.configure(
+            "FormLabel.TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 11, "bold"),
         )
         style.configure(
             "ResizeHandle.TLabel",
@@ -1435,26 +1576,43 @@ class G2DTCApplication(tk.Tk):
             "Header.TButton",
             background=[("active", "#DCEAFF")],
         )
+        style.configure(
+            "SoftAccent.TButton",
+            foreground=COLORS["accent"],
+            background=COLORS["accent_soft"],
+            borderwidth=0,
+            padding=(13, 9),
+            font=("Helvetica Neue", 11, "bold"),
+        )
+        style.map(
+            "SoftAccent.TButton",
+            background=[("active", "#DCEAFF")],
+        )
 
     def _build_shell(self) -> None:
         header = ttk.Frame(self, style="Header.TFrame", padding=(20, 13))
         header.pack(fill="x")
         title_area = ttk.Frame(header, style="Header.TFrame")
         title_area.pack(side="left")
-        title_row = ttk.Frame(title_area, style="Header.TFrame")
-        title_row.pack(anchor="w")
         ttk.Label(
-            title_row,
+            title_area,
             text="G2DTC",
             style="HeaderTitle.TLabel",
+        ).pack(anchor="w")
+        version_row = ttk.Frame(title_area, style="Header.TFrame")
+        version_row.pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            version_row,
+            text="General 2D Material Transfer Controller  ·",
+            style="HeaderSub.TLabel",
         ).pack(side="left")
         version_label = ttk.Label(
-            title_row,
+            version_row,
             text=f"{self.commit_sha}  ·  {REPOSITORY_URL}",
             style="VersionLink.TLabel",
             cursor="hand2",
         )
-        version_label.pack(side="left", padx=(14, 0), pady=(7, 0))
+        version_label.pack(side="left", padx=(7, 0))
         version_label.bind(
             "<Button-1>",
             lambda _event: webbrowser.open_new_tab(
@@ -1474,7 +1632,7 @@ class G2DTCApplication(tk.Tk):
             command=self.stop_all_motors,
         ).pack(side="right")
 
-        self.notebook = ttk.Notebook(self)
+        self.notebook = ttk.Notebook(self, style="Modern.TNotebook")
         self.notebook.pack(fill="both", expand=True)
         self.rebuild_views()
 
