@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
 MANUAL_ASSIGNMENT = "__manual__"
 
 
@@ -43,11 +43,11 @@ SLOTS: tuple[SlotDefinition, ...] = (
 )
 
 SLOT_BY_KEY = {slot.key: slot for slot in SLOTS}
-GROUPS = (
-    ("transfer_arm", "Transfer Arm"),
-    ("stage", "Stage"),
-    ("microscope", "Microscope"),
-)
+
+
+def is_hardware_assignment(value: str | None) -> bool:
+    """Return whether an assignment should create a dashboard module."""
+    return bool(value) and value != MANUAL_ASSIGNMENT
 
 
 def default_config_path() -> Path:
@@ -60,6 +60,10 @@ def default_config_path() -> Path:
 
 
 def _default_assignments() -> dict[str, str | None]:
+    return {slot.key: None for slot in SLOTS}
+
+
+def _legacy_simulation_assignments() -> dict[str, str | None]:
     motor_index = 1
     assignments: dict[str, str | None] = {}
     for slot in SLOTS:
@@ -83,10 +87,10 @@ class AppConfig:
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "AppConfig":
         version = int(raw.get("version", CONFIG_VERSION))
-        if version != CONFIG_VERSION:
+        if version not in (1, CONFIG_VERSION):
             raise ValueError(
                 f"Unsupported configuration version {version}; "
-                f"expected {CONFIG_VERSION}"
+                f"expected 1 or {CONFIG_VERSION}"
             )
         devices_raw = raw.get("devices", [])
         assignments_raw = raw.get("assignments", {})
@@ -101,6 +105,13 @@ class AppConfig:
             if value is not None and not isinstance(value, str):
                 raise ValueError(f"Assignment for {slot.key} must be text or null")
             assignments[slot.key] = value
+        if (
+            version == 1
+            and bool(raw.get("simulation", False))
+            and not devices_raw
+            and assignments == _legacy_simulation_assignments()
+        ):
+            assignments = _default_assignments()
 
         devices: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
@@ -121,7 +132,7 @@ class AppConfig:
             devices.append(device)
 
         return cls(
-            version=version,
+            version=CONFIG_VERSION,
             simulation=bool(raw.get("simulation", False)),
             devices=devices,
             assignments=assignments,
