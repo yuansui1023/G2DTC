@@ -133,9 +133,9 @@ class EmptySlotCard(SlotCard):
             style="CardTitle.TLabel",
         ).pack(anchor="w")
         message = (
-            f"设备不存在\n{missing_device}"
+            f"Device not found\n{missing_device}"
             if missing_device
-            else "未分配\n在“设备分配”中选择设备"
+            else "Unassigned\nSelect a device on the Assignments tab"
         )
         ttk.Label(
             self,
@@ -162,7 +162,10 @@ class ManualSlotCard(SlotCard):
         ).pack(anchor="w", pady=(10, 0))
         ttk.Label(
             self,
-            text="该自由度由人工操作\n程序不会发送任何设备命令",
+            text=(
+                "This degree of freedom is operated manually\n"
+                "The application will not send device commands"
+            ),
             style="Empty.TLabel",
             justify="left",
         ).pack(anchor="w", pady=(20, 0))
@@ -181,7 +184,7 @@ class DeviceSlotCard(SlotCard):
         super().__init__(master, app, slot)
         self.driver = driver
         self._polling = False
-        self.connection_var = tk.StringVar(value="未连接")
+        self.connection_var = tk.StringVar(value="Disconnected")
         self.error_var = tk.StringVar(value="")
 
         header = ttk.Frame(self, style="Card.TFrame")
@@ -191,8 +194,8 @@ class DeviceSlotCard(SlotCard):
         ).pack(side="left")
         self.connect_button = ttk.Button(
             header,
-            text="连接",
-            width=7,
+            text="Connect",
+            width=10,
             style="Small.TButton",
             command=self.toggle_connection,
         )
@@ -216,14 +219,14 @@ class DeviceSlotCard(SlotCard):
             self.submit(
                 self.driver.disconnect,
                 success=lambda _value: self._connection_changed(False),
-                message=f"断开 {self.driver.display_name}",
+                message=f"Disconnect {self.driver.display_name}",
             )
         else:
-            self.connection_var.set("正在连接…")
+            self.connection_var.set("Connecting...")
             self.submit(
                 self.driver.connect,
                 success=lambda _value: self._connection_changed(True),
-                message=f"连接 {self.driver.display_name}",
+                message=f"Connect {self.driver.display_name}",
             )
 
     def ensure_connected(self, operation: Callable[[], Any]) -> Any:
@@ -233,13 +236,15 @@ class DeviceSlotCard(SlotCard):
 
     def show_error(self, error: BaseException) -> None:
         self.error_var.set(str(error))
-        self.connection_var.set("通信错误")
+        self.connection_var.set("Communication error")
 
     def _connection_changed(self, connected: bool) -> None:
         if not self._alive:
             return
-        self.connection_var.set("已连接" if connected else "未连接")
-        self.connect_button.configure(text="断开" if connected else "连接")
+        self.connection_var.set("Connected" if connected else "Disconnected")
+        self.connect_button.configure(
+            text="Disconnect" if connected else "Connect"
+        )
         self.error_var.set("")
         self._poll()
 
@@ -258,8 +263,8 @@ class DeviceSlotCard(SlotCard):
         self._polling = False
         if not self._alive:
             return
-        self.connection_var.set("已连接")
-        self.connect_button.configure(text="断开")
+        self.connection_var.set("Connected")
+        self.connect_button.configure(text="Disconnect")
         self.error_var.set("")
         self.apply_status(status)
 
@@ -282,7 +287,7 @@ class MotorSlotCard(DeviceSlotCard):
     ) -> None:
         super().__init__(master, app, slot, driver)
         self.position_var = tk.StringVar(value="—")
-        self.motion_var = tk.StringVar(value="静止")
+        self.motion_var = tk.StringVar(value="Idle")
         self.step_var = tk.StringVar(
             value=f"{float(getattr(driver, 'default_step', 1.0)):g}"
         )
@@ -308,7 +313,7 @@ class MotorSlotCard(DeviceSlotCard):
 
         step_row = ttk.Frame(self, style="Card.TFrame")
         step_row.pack(fill="x", pady=(2, 5))
-        ttk.Label(step_row, text="步长", style="Field.TLabel").pack(side="left")
+        ttk.Label(step_row, text="Step", style="Field.TLabel").pack(side="left")
         ttk.Entry(step_row, textvariable=self.step_var, width=10).pack(
             side="right"
         )
@@ -316,32 +321,32 @@ class MotorSlotCard(DeviceSlotCard):
         move_row.pack(fill="x", pady=(0, 7))
         ttk.Button(
             move_row,
-            text="− 移动",
+            text="Move −",
             command=lambda: self.move(-1),
         ).pack(side="left", fill="x", expand=True, padx=(0, 3))
         ttk.Button(
             move_row,
-            text="+ 移动",
+            text="Move +",
             command=lambda: self.move(1),
             style="Accent.TButton",
         ).pack(side="left", fill="x", expand=True, padx=(3, 0))
 
         jog_row = ttk.Frame(self, style="Card.TFrame")
         jog_row.pack(fill="x")
-        left = ttk.Button(jog_row, text="◀ 点动", style="Small.TButton")
+        left = ttk.Button(jog_row, text="◀ Jog", style="Small.TButton")
         left.pack(side="left")
         left.bind("<ButtonPress-1>", lambda _event: self.start_jog(-1))
         left.bind("<ButtonRelease-1>", lambda _event: self.stop())
         ttk.Entry(jog_row, textvariable=self.jog_var, width=7).pack(
             side="left", padx=5
         )
-        right = ttk.Button(jog_row, text="点动 ▶", style="Small.TButton")
+        right = ttk.Button(jog_row, text="Jog ▶", style="Small.TButton")
         right.pack(side="left")
         right.bind("<ButtonPress-1>", lambda _event: self.start_jog(1))
         right.bind("<ButtonRelease-1>", lambda _event: self.stop())
         ttk.Button(
             jog_row,
-            text="停止",
+            text="Stop",
             style="Danger.TButton",
             command=self.stop,
         ).pack(side="right")
@@ -350,14 +355,14 @@ class MotorSlotCard(DeviceSlotCard):
         utility.pack(fill="x", pady=(8, 0))
         self.enable_button = ttk.Button(
             utility,
-            text="启用电机",
+            text="Enable motor",
             style="Small.TButton",
             command=self.toggle_enable,
         )
         self.enable_button.pack(side="left")
         ttk.Button(
             utility,
-            text="当前位置归零",
+            text="Zero position",
             style="Small.TButton",
             command=self.zero,
         ).pack(side="right")
@@ -379,10 +384,10 @@ class MotorSlotCard(DeviceSlotCard):
 
     def apply_status(self, status: dict[str, Any]) -> None:
         self.position_var.set(f"{float(status['position']):.6g}")
-        self.motion_var.set("运动中" if status["moving"] else "静止")
+        self.motion_var.set("Moving" if status["moving"] else "Idle")
         self._enabled = bool(status["enabled"])
         self.enable_button.configure(
-            text="关闭电机" if self._enabled else "启用电机"
+            text="Disable motor" if self._enabled else "Enable motor"
         )
         self.unit_label.configure(text=status["unit"])
 
@@ -390,7 +395,9 @@ class MotorSlotCard(DeviceSlotCard):
         try:
             distance = abs(float(self.step_var.get())) * int(direction)
         except ValueError:
-            messagebox.showerror("输入错误", "步长必须是数字", parent=self)
+            messagebox.showerror(
+                "Invalid input", "Step must be a number", parent=self
+            )
             return
 
         def operation() -> None:
@@ -405,14 +412,16 @@ class MotorSlotCard(DeviceSlotCard):
         self.submit(
             operation,
             success=lambda _value: self._poll(),
-            message=f"移动 {self.slot.key}",
+            message=f"Move {self.slot.key}",
         )
 
     def start_jog(self, direction: int) -> None:
         try:
             velocity = abs(float(self.jog_var.get()))
         except ValueError:
-            messagebox.showerror("输入错误", "点动速度必须是数字", parent=self)
+            messagebox.showerror(
+                "Invalid input", "Jog speed must be a number", parent=self
+            )
             return
 
         def operation() -> None:
@@ -420,7 +429,7 @@ class MotorSlotCard(DeviceSlotCard):
                 lambda: self.driver.jog(direction, velocity)
             )
 
-        self.submit(operation, message=f"点动 {self.slot.key}")
+        self.submit(operation, message=f"Jog {self.slot.key}")
 
     def stop(self) -> None:
         if not getattr(self.driver, "is_connected", False):
@@ -428,7 +437,7 @@ class MotorSlotCard(DeviceSlotCard):
         self.submit(
             self.driver.stop,
             success=lambda _value: self._poll(),
-            message=f"停止 {self.slot.key}",
+            message=f"Stop {self.slot.key}",
         )
 
     def toggle_enable(self) -> None:
@@ -436,21 +445,21 @@ class MotorSlotCard(DeviceSlotCard):
         self.submit(
             lambda: self.ensure_connected(lambda: self.driver.enable(desired)),
             success=lambda _value: self._poll(),
-            message=("启用" if desired else "关闭") + f" {self.slot.key}",
+            message=("Enable" if desired else "Disable") + f" {self.slot.key}",
         )
 
     def zero(self) -> None:
         if not messagebox.askyesno(
-            "确认归零",
-            f"把 {self.slot.group_label} {self.slot.label} 的"
-            "当前位置设为零？\n设备不会移动。",
+            "Confirm zero",
+            f"Set the current {self.slot.group_label} {self.slot.label} "
+            "position to zero?\nThe device will not move.",
             parent=self,
         ):
             return
         self.submit(
             lambda: self.ensure_connected(self.driver.zero),
             success=lambda _value: self._poll(),
-            message=f"归零 {self.slot.key}",
+            message=f"Zero {self.slot.key}",
         )
 
 
@@ -471,7 +480,7 @@ class TemperatureSlotCard(DeviceSlotCard):
             value=f"{float(getattr(driver, 'default_setpoint', 25.0)):g}"
         )
         self.persist_var = tk.BooleanVar(value=False)
-        self.output_var = tk.StringVar(value="启用输出")
+        self.output_var = tk.StringVar(value="Enable output")
         self._output_enabled = False
         self._setpoint_touched = False
 
@@ -491,7 +500,7 @@ class TemperatureSlotCard(DeviceSlotCard):
         setpoint_row = ttk.Frame(self, style="Card.TFrame")
         setpoint_row.pack(fill="x", pady=(2, 6))
         ttk.Label(
-            setpoint_row, text="设定值", style="Field.TLabel"
+            setpoint_row, text="Setpoint", style="Field.TLabel"
         ).pack(side="left")
         setpoint_entry = ttk.Entry(
             setpoint_row, textvariable=self.setpoint_var, width=10
@@ -503,13 +512,13 @@ class TemperatureSlotCard(DeviceSlotCard):
 
         ttk.Button(
             self,
-            text="应用设定值",
+            text="Apply setpoint",
             style="Accent.TButton",
             command=self.apply_setpoint,
         ).pack(fill="x", pady=(0, 5))
         ttk.Checkbutton(
             self,
-            text="断电保存（写入 EEPROM）",
+            text="Persist to EEPROM",
             variable=self.persist_var,
         ).pack(anchor="w")
         ttk.Button(
@@ -519,7 +528,7 @@ class TemperatureSlotCard(DeviceSlotCard):
         ).pack(fill="x", pady=(8, 0))
         ttk.Label(
             self,
-            text="关闭输出会让 CNi8 进入待机并关闭报警",
+            text="Disabling output puts the CNi8 in standby and disables alarms",
             style="Hint.TLabel",
             wraplength=220,
         ).pack(anchor="w", pady=(5, 0))
@@ -547,16 +556,18 @@ class TemperatureSlotCard(DeviceSlotCard):
         if status["output"] is not None:
             self._output_enabled = bool(status["output"])
             self.output_var.set(
-                "进入待机 / 关闭输出"
+                "Enter standby / Disable output"
                 if self._output_enabled
-                else "退出待机 / 启用输出"
+                else "Leave standby / Enable output"
             )
 
     def apply_setpoint(self) -> None:
         try:
             value = float(self.setpoint_var.get())
         except ValueError:
-            messagebox.showerror("输入错误", "设定值必须是数字", parent=self)
+            messagebox.showerror(
+                "Invalid input", "Setpoint must be a number", parent=self
+            )
             return
         persist = self.persist_var.get()
 
@@ -573,7 +584,7 @@ class TemperatureSlotCard(DeviceSlotCard):
         self.submit(
             operation,
             success=success,
-            message=f"设置 {self.slot.key} = {value:g}",
+            message=f"Set {self.slot.key} = {value:g}",
         )
 
     def toggle_output(self) -> None:
@@ -583,15 +594,16 @@ class TemperatureSlotCard(DeviceSlotCard):
                 lambda: self.driver.output(desired)
             ),
             success=lambda _value: self._output_changed(desired),
-            message=("启用" if desired else "关闭") + "温控输出",
+            message=("Enable" if desired else "Disable")
+            + " temperature output",
         )
 
     def _output_changed(self, enabled: bool) -> None:
         self._output_enabled = enabled
         self.output_var.set(
-            "进入待机 / 关闭输出"
+            "Enter standby / Disable output"
             if enabled
-            else "退出待机 / 启用输出"
+            else "Leave standby / Enable output"
         )
         self._poll()
 
@@ -646,8 +658,8 @@ class Dashboard(ttk.Frame):
 
 
 class AssignmentPage(ttk.Frame):
-    UNASSIGNED = "— 未分配 —"
-    MANUAL = "手动控制"
+    UNASSIGNED = "— Unassigned —"
+    MANUAL = "Manual control"
 
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
         super().__init__(master, style="Page.TFrame", padding=18)
@@ -676,35 +688,40 @@ class AssignmentPage(ttk.Frame):
         top.pack(fill="x", pady=(0, 12))
         ttk.Label(
             top,
-            text="设备分配",
+            text="Assignments",
             style="PageTitle.TLabel",
         ).pack(side="left")
         ttk.Label(
             top,
-            text="同一台设备只能分配给一个自由度；选择后自动保存",
+            text=(
+                "Each physical device can be assigned only once; "
+                "changes are saved automatically"
+            ),
             style="Muted.TLabel",
         ).pack(side="left", padx=(14, 0), pady=(8, 0))
         ttk.Button(
             top,
-            text="硬件设备…",
+            text="Hardware devices...",
             command=lambda: HardwareDialog(self.app),
         ).pack(side="right")
         demo_var = tk.BooleanVar(value=self.app.config.simulation)
         ttk.Checkbutton(
             top,
-            text="演示模式",
+            text="Simulation mode",
             variable=demo_var,
             command=lambda: self.app.set_simulation(demo_var.get()),
         ).pack(side="right", padx=12)
 
         assignments = ttk.LabelFrame(
             self,
-            text="10 个自由度 + 温控",
+            text="10 degrees of freedom + temperature",
             style="Group.TLabelframe",
             padding=14,
         )
         assignments.pack(fill="x")
-        for column, text in enumerate(("系统", "自由度", "类型", "分配设备")):
+        for column, text in enumerate(
+            ("System", "Degree of freedom", "Type", "Assigned device")
+        ):
             ttk.Label(
                 assignments, text=text, style="TableHeader.TLabel"
             ).grid(row=0, column=column, sticky="w", padx=(0, 14), pady=(0, 8))
@@ -719,7 +736,7 @@ class AssignmentPage(ttk.Frame):
             ).grid(row=row, column=1, sticky="w", padx=(0, 14), pady=4)
             ttk.Label(
                 assignments,
-                text="电机" if slot.kind == "motor" else "温控",
+                text="Motor" if slot.kind == "motor" else "Temperature",
                 style="Kind.TLabel",
             ).grid(row=row, column=2, sticky="w", padx=(0, 14), pady=4)
 
@@ -731,7 +748,7 @@ class AssignmentPage(ttk.Frame):
             assigned = self.app.config.assignments.get(slot.key)
             selected = self.id_to_display.get(
                 assigned,
-                f"缺失设备 [{assigned}]" if assigned else self.UNASSIGNED,
+                f"Missing device [{assigned}]" if assigned else self.UNASSIGNED,
             )
             variable = tk.StringVar(value=selected)
             combo = ttk.Combobox(
@@ -751,7 +768,7 @@ class AssignmentPage(ttk.Frame):
 
         devices = ttk.LabelFrame(
             self,
-            text="当前可分配设备",
+            text="Available devices",
             style="Group.TLabelframe",
             padding=12,
         )
@@ -764,10 +781,10 @@ class AssignmentPage(ttk.Frame):
             height=8,
         )
         headings = {
-            "name": ("名称", 250),
-            "kind": ("类型", 100),
-            "source": ("来源", 130),
-            "id": ("设备 ID", 310),
+            "name": ("Name", 250),
+            "kind": ("Type", 100),
+            "source": ("Source", 130),
+            "id": ("Device ID", 310),
         }
         for column, (text, width) in headings.items():
             tree.heading(column, text=text)
@@ -778,7 +795,7 @@ class AssignmentPage(ttk.Frame):
                 "end",
                 values=(
                     summary.display_name,
-                    "电机" if summary.kind == "motor" else "温控",
+                    "Motor" if summary.kind == "motor" else "Temperature",
                     summary.source,
                     summary.device_id,
                 ),
@@ -789,18 +806,18 @@ class AssignmentPage(ttk.Frame):
         footer.pack(fill="x", pady=(10, 0))
         ttk.Label(
             footer,
-            text=f"配置文件：{self.app.config_path}",
+            text=f"Configuration: {self.app.config_path}",
             style="Muted.TLabel",
         ).pack(side="left")
         ttk.Button(
             footer,
-            text="打开配置文件夹",
+            text="Open configuration folder",
             style="Small.TButton",
             command=self.app.open_config_folder,
         ).pack(side="right")
         ttk.Button(
             footer,
-            text="从磁盘重新载入",
+            text="Reload from disk",
             style="Small.TButton",
             command=self.app.reload_from_disk,
         ).pack(side="right", padx=(0, 8))
@@ -817,17 +834,18 @@ class AssignmentPage(ttk.Frame):
             )
             self.app.save()
         except Exception as exc:
-            messagebox.showerror("无法分配", str(exc), parent=self)
+            messagebox.showerror("Assignment failed", str(exc), parent=self)
             self.app.rebuild_views(selected_tab=1)
             return
         if cleared:
             cleared_slot = SLOT_BY_KEY[cleared]
             self.app.set_status(
-                f"{device_id} 已移到 {slot_key}；"
-                f"{cleared_slot.group_label} {cleared_slot.label} 已取消分配"
+                f"{device_id} moved to {slot_key}; "
+                f"{cleared_slot.group_label} {cleared_slot.label} "
+                "was unassigned"
             )
         else:
-            self.app.set_status(f"已保存 {slot_key} 的分配")
+            self.app.set_status(f"Saved assignment for {slot_key}")
         self.app.rebuild_views(selected_tab=1)
 
 
@@ -837,7 +855,7 @@ class HardwareDialog(tk.Toplevel):
     def __init__(self, app: "G2DTCApplication") -> None:
         super().__init__(app)
         self.app = app
-        self.title("硬件设备")
+        self.title("Hardware Devices")
         self.geometry("940x570")
         self.minsize(860, 520)
         self.transient(app)
@@ -874,9 +892,9 @@ class HardwareDialog(tk.Toplevel):
             height=17,
         )
         for column, text, width in (
-            ("type", "类型", 100),
-            ("name", "名称 / ID", 190),
-            ("port", "串口", 150),
+            ("type", "Type", 100),
+            ("name", "Name / ID", 190),
+            ("port", "Serial port", 150),
         ):
             self.tree.heading(column, text=text)
             self.tree.column(column, width=width, anchor="w")
@@ -885,29 +903,29 @@ class HardwareDialog(tk.Toplevel):
         toolbar = ttk.Frame(left, style="Card.TFrame")
         toolbar.pack(fill="x", pady=(10, 0))
         ttk.Button(
-            toolbar, text="新建设备", command=self._new
+            toolbar, text="New device", command=self._new
         ).pack(side="left")
         ttk.Button(
             toolbar,
-            text="删除",
+            text="Delete",
             style="Danger.TButton",
             command=self._delete,
         ).pack(side="right")
 
-        ttk.Label(right, text="设备参数", style="CardTitle.TLabel").grid(
+        ttk.Label(right, text="Device settings", style="CardTitle.TLabel").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
         fields = (
-            ("设备类型", "type"),
-            ("设备 ID", "id"),
-            ("显示名称", "name"),
-            ("串口", "port"),
-            ("地址", "address"),
-            ("协议", "protocol"),
-            ("波特率", "baudrate"),
-            ("超时（秒）", "timeout"),
-            ("PZC 流控", "flow"),
-            ("ESP300 轴", "axes"),
+            ("Device type", "type"),
+            ("Device ID", "id"),
+            ("Display name", "name"),
+            ("Serial port", "port"),
+            ("Address", "address"),
+            ("Protocol", "protocol"),
+            ("Baud rate", "baudrate"),
+            ("Timeout (seconds)", "timeout"),
+            ("PZC flow control", "flow"),
+            ("ESP300 axes", "axes"),
         )
         for row, (label, key) in enumerate(fields, 1):
             ttk.Label(right, text=label).grid(
@@ -942,20 +960,21 @@ class HardwareDialog(tk.Toplevel):
         right.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             right,
-            text="启用此设备",
+            text="Enable this device",
             variable=self.variables["enabled"],
         ).grid(row=11, column=1, sticky="w", pady=(8, 4))
         ttk.Label(
             right,
             text=(
-                "ESP300 地址由设备 ID 生成：<ID>.axis1–3。\n"
-                "CNi8 使用 RS-232 时地址留空；RS-485/Modbus 填 1–199。"
+                "ESP300 axis IDs use the format <ID>.axis1-3.\n"
+                "Leave the CNi8 address blank for RS-232; "
+                "use 1-199 for RS-485 or Modbus."
             ),
             style="Hint.TLabel",
         ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(8, 12))
         ttk.Button(
             right,
-            text="保存设备并重新载入",
+            text="Save device and reload",
             style="Accent.TButton",
             command=self._save,
         ).grid(row=13, column=0, columnspan=2, sticky="ew")
@@ -1032,7 +1051,7 @@ class HardwareDialog(tk.Toplevel):
         try:
             item = self._form_item()
         except ValueError as exc:
-            messagebox.showerror("参数错误", str(exc), parent=self)
+            messagebox.showerror("Invalid settings", str(exc), parent=self)
             return
         devices = [dict(device) for device in self.app.config.devices]
         old_id: str | None = None
@@ -1040,7 +1059,7 @@ class HardwareDialog(tk.Toplevel):
         if self.selected_index is None:
             if any(device["id"] == item["id"] for device in devices):
                 messagebox.showerror(
-                    "参数错误", "设备 ID 已存在", parent=self
+                    "Invalid settings", "Device ID already exists", parent=self
                 )
                 return
             devices.append(item)
@@ -1052,7 +1071,7 @@ class HardwareDialog(tk.Toplevel):
                 for index, device in enumerate(devices)
             ):
                 messagebox.showerror(
-                    "参数错误", "设备 ID 已存在", parent=self
+                    "Invalid settings", "Device ID already exists", parent=self
                 )
                 return
             devices[self.selected_index] = item
@@ -1068,13 +1087,16 @@ class HardwareDialog(tk.Toplevel):
     def _form_item(self) -> dict[str, Any]:
         device_type = self.TYPE_TO_KEY.get(self.variables["type"].get())
         if not device_type:
-            raise ValueError("请选择设备类型")
+            raise ValueError("Select a device type")
         device_id = self.variables["id"].get().strip()
         port = self.variables["port"].get().strip()
         if not device_id or not re_identifier(device_id):
-            raise ValueError("设备 ID 只能包含字母、数字、点、短横线和下划线")
+            raise ValueError(
+                "Device ID may contain only letters, numbers, periods, "
+                "hyphens, and underscores"
+            )
         if not port:
-            raise ValueError("串口不能为空")
+            raise ValueError("Serial port is required")
         item: dict[str, Any] = {
             "type": device_type,
             "id": device_id,
@@ -1084,7 +1106,7 @@ class HardwareDialog(tk.Toplevel):
             "enabled": self.variables["enabled"].get(),
         }
         if item["timeout"] <= 0:
-            raise ValueError("超时必须大于零")
+            raise ValueError("Timeout must be greater than zero")
         if device_type == "esp300":
             axes = {
                 int(part.strip())
@@ -1092,12 +1114,14 @@ class HardwareDialog(tk.Toplevel):
                 if part.strip()
             }
             if not axes or not axes.issubset({1, 2, 3}):
-                raise ValueError("ESP300 轴必须是 1、2、3，例如 1,2,3")
+                raise ValueError(
+                    "ESP300 axes must be 1, 2, or 3; for example, 1,2,3"
+                )
             item.update({"axes": sorted(axes), "rtscts": True})
         elif device_type == "pzc200":
             address = int(self.variables["address"].get())
             if not 0 <= address <= 255:
-                raise ValueError("PZC200 地址必须是 0–255")
+                raise ValueError("PZC200 address must be between 0 and 255")
             item.update(
                 {
                     "address": address,
@@ -1111,9 +1135,11 @@ class HardwareDialog(tk.Toplevel):
             if protocol == "modbus" and address is None:
                 address = 1
             if protocol == "modbus" and not 1 <= int(address) <= 199:
-                raise ValueError("CNi8 Modbus 地址必须是 1–199")
+                raise ValueError(
+                    "CNi8 Modbus address must be between 1 and 199"
+                )
             if address is not None and not 0 <= address <= 199:
-                raise ValueError("CNi8 地址必须是 0–199")
+                raise ValueError("CNi8 address must be between 0 and 199")
             item.update(
                 {
                     "protocol": protocol,
@@ -1128,9 +1154,9 @@ class HardwareDialog(tk.Toplevel):
             return
         item = self.app.config.devices[self.selected_index]
         if not messagebox.askyesno(
-            "删除设备",
-            f"删除 {item.get('name', item['id'])}？\n"
-            "相关自由度将变为未分配。",
+            "Delete device",
+            f"Delete {item.get('name', item['id'])}?\n"
+            "Related degrees of freedom will become unassigned.",
             parent=self,
         ):
             return
@@ -1158,7 +1184,7 @@ class G2DTCApplication(tk.Tk):
         self.executor = ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="g2dtc"
         )
-        self.status_var = tk.StringVar(value="就绪")
+        self.status_var = tk.StringVar(value="Ready")
         self._closing = False
         self.registry = DeviceRegistry(self.config, log_callback=self._device_log)
 
@@ -1225,13 +1251,13 @@ class G2DTCApplication(tk.Tk):
         ).pack(anchor="w")
         ttk.Button(
             header,
-            text="连接已分配设备",
+            text="Connect assigned devices",
             style="Header.TButton",
             command=self.connect_assigned,
         ).pack(side="right", padx=(8, 0))
         ttk.Button(
             header,
-            text="电机全部停止  Esc",
+            text="Stop all motors  Esc",
             style="Danger.TButton",
             command=self.stop_all_motors,
         ).pack(side="right")
@@ -1260,8 +1286,8 @@ class G2DTCApplication(tk.Tk):
             page.destroy()
         dashboard = Dashboard(self.notebook, self)
         assignments = AssignmentPage(self.notebook, self)
-        self.notebook.add(dashboard, text="  控制台  ")
-        self.notebook.add(assignments, text="  设备分配  ")
+        self.notebook.add(dashboard, text="  Dashboard  ")
+        self.notebook.add(assignments, text="  Assignments  ")
         if selected_tab is not None:
             self.notebook.select(min(selected_tab, 1))
 
@@ -1291,15 +1317,17 @@ class G2DTCApplication(tk.Tk):
                         owner._polling = False
                         owner.show_error(exc)
                 if message:
-                    self.set_status(f"{message}失败：{exc}")
-                    messagebox.showerror("设备操作失败", str(exc), parent=self)
+                    self.set_status(f"{message} failed: {exc}")
+                    messagebox.showerror(
+                        "Device operation failed", str(exc), parent=self
+                    )
                 return
             if owner is not None and not owner._alive:
                 return
             if success:
                 success(value)
             if message:
-                self.set_status(message + "完成")
+                self.set_status(message + " complete")
 
         self.after(0, poll)
         return future
@@ -1324,13 +1352,15 @@ class G2DTCApplication(tk.Tk):
             self.rebuild_views(selected_tab=0)
             if errors:
                 messagebox.showwarning(
-                    "部分设备未连接",
+                    "Some devices did not connect",
                     "\n".join(errors),
                     parent=self,
                 )
-            self.set_status(f"已连接 {connected} 台已分配设备")
+            self.set_status(f"Connected {connected} assigned devices")
 
-        self.submit(operation, success=success, message="连接已分配设备")
+        self.submit(
+            operation, success=success, message="Connect assigned devices"
+        )
 
     def stop_all_motors(self) -> None:
         motors = [
@@ -1351,15 +1381,15 @@ class G2DTCApplication(tk.Tk):
         def success(errors: list[str]) -> None:
             if errors:
                 messagebox.showwarning(
-                    "部分电机停止失败", "\n".join(errors), parent=self
+                    "Some motors did not stop", "\n".join(errors), parent=self
                 )
             self.set_status(
-                "已向所有已连接电机发送停止命令"
+                "Stop command sent to all connected motors"
                 if not errors
-                else "电机停止完成，但有错误"
+                else "Motor stop completed with errors"
             )
 
-        self.submit(operation, success=success, message="停止所有电机")
+        self.submit(operation, success=success, message="Stop all motors")
 
     def set_simulation(self, enabled: bool) -> None:
         if self.config.simulation == bool(enabled):
@@ -1409,19 +1439,23 @@ class G2DTCApplication(tk.Tk):
                 self.config, log_callback=self._device_log
             )
         except Exception as exc:
-            messagebox.showerror("设备配置错误", str(exc), parent=self)
-            self.set_status(f"设备配置错误：{exc}")
+            messagebox.showerror(
+                "Device configuration error", str(exc), parent=self
+            )
+            self.set_status(f"Device configuration error: {exc}")
             return
         self.registry.shutdown()
         self.registry = new_registry
         self.rebuild_views(selected_tab=selected_tab)
-        self.set_status(f"已载入 {len(self.registry)} 个可分配设备")
+        self.set_status(f"Loaded {len(self.registry)} available devices")
 
     def reload_from_disk(self) -> None:
         try:
             self.config = load_config(self.config_path)
         except Exception as exc:
-            messagebox.showerror("配置载入失败", str(exc), parent=self)
+            messagebox.showerror(
+                "Configuration load failed", str(exc), parent=self
+            )
             return
         self._rebuild_registry(selected_tab=1)
 
@@ -1429,7 +1463,9 @@ class G2DTCApplication(tk.Tk):
         try:
             save_config(self.config, self.config_path)
         except Exception as exc:
-            messagebox.showerror("配置保存失败", str(exc), parent=self)
+            messagebox.showerror(
+                "Configuration save failed", str(exc), parent=self
+            )
 
     def open_config_folder(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1441,7 +1477,7 @@ class G2DTCApplication(tk.Tk):
             else:
                 subprocess.Popen(["xdg-open", str(self.config_path.parent)])
         except Exception as exc:
-            messagebox.showerror("无法打开文件夹", str(exc), parent=self)
+            messagebox.showerror("Cannot open folder", str(exc), parent=self)
 
     def set_status(self, message: str) -> None:
         self.status_var.set(message)
