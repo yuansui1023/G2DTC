@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "simulation": false,
+  "devices": [
+    {
+      "type": "esp300",
+      "id": "esp300.stage",
+      "name": "Stage ESP300",
+      "port": "COM4",
+      "timeout": 1.0,
+      "rtscts": true,
+      "axes": [
+        1,
+        2,
+        3
+      ],
+      "axis_names": {
+        "1": "Stage X",
+        "2": "Stage Y",
+        "3": "Stage Z"
+      },
+      "enabled": true
+    },
+    {
+      "type": "pzc200",
+      "id": "pzc.transfer_z",
+      "name": "Transfer Arm Z NanoPZ",
+      "port": "COM5",
+      "address": 0,
+      "timeout": 0.7,
+      "flow": "both",
+      "enabled": true
+    },
+    {
+      "type": "omega_cni8",
+      "id": "temperature.stage",
+      "name": "Stage CNi8D",
+      "port": "COM6",
+      "protocol": "iseries",
+      "address": null,
+      "baudrate": 9600,
+      "timeout": 1.0,
+      "recognition_character": "*",
+      "enabled": true
+    }
+  ],
+  "assignments": {
+    "transfer_arm.x": "__manual__",
+    "transfer_arm.y": "__manual__",
+    "transfer_arm.z": "pzc.transfer_z",
+    "stage.x": "esp300.stage.axis1",
+    "stage.y": "esp300.stage.axis2",
+    "stage.z": "esp300.stage.axis3",
+    "stage.rz": null,
+    "stage.temperature": "temperature.stage",
+    "microscope.x": "__manual__",
+    "microscope.y": "__manual__",
+    "microscope.z": "__manual__"
+  }
+}

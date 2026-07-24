@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "g2dtc"
+version = "0.1.0"
+description = "General 2D Material Transfer Controller"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[project.scripts]
+g2dtc = "g2dtc.app:main"
+
+[tool.setuptools.packages.find]
+include = ["g2dtc*"]
