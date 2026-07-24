@@ -15,11 +15,14 @@ from g2dtc.config import (
 
 
 class ConfigTests(unittest.TestCase):
-    def test_default_starts_with_every_slot_unassigned(self) -> None:
+    def test_default_starts_with_every_slot_manual(self) -> None:
         config = AppConfig()
         self.assertEqual(len(SLOTS), 11)
         self.assertTrue(
-            all(value is None for value in config.assignments.values())
+            all(
+                value == MANUAL_ASSIGNMENT
+                for value in config.assignments.values()
+            )
         )
 
     def test_legacy_default_simulation_assignments_are_cleared(self) -> None:
@@ -40,7 +43,26 @@ class ConfigTests(unittest.TestCase):
             }
         )
         self.assertTrue(
-            all(value is None for value in config.assignments.values())
+            all(
+                value == MANUAL_ASSIGNMENT
+                for value in config.assignments.values()
+            )
+        )
+
+    def test_null_assignments_migrate_to_manual(self) -> None:
+        config = AppConfig.from_dict(
+            {
+                "version": 2,
+                "simulation": False,
+                "devices": [],
+                "assignments": {"stage.x": None},
+            }
+        )
+        self.assertTrue(
+            all(
+                value == MANUAL_ASSIGNMENT
+                for value in config.assignments.values()
+            )
         )
 
     def test_assignment_is_exclusive(self) -> None:
@@ -56,7 +78,10 @@ class ConfigTests(unittest.TestCase):
             device_kind="motor",
         )
         self.assertEqual(cleared, "transfer_arm.x")
-        self.assertIsNone(config.assignments["transfer_arm.x"])
+        self.assertEqual(
+            config.assignments["transfer_arm.x"],
+            MANUAL_ASSIGNMENT,
+        )
         self.assertEqual(config.assignments["stage.x"], "sim.motor.1")
 
     def test_manual_assignment_is_not_exclusive(self) -> None:
@@ -65,6 +90,11 @@ class ConfigTests(unittest.TestCase):
         config.assign("stage.y", MANUAL_ASSIGNMENT)
         self.assertEqual(config.assignments["stage.x"], MANUAL_ASSIGNMENT)
         self.assertEqual(config.assignments["stage.y"], MANUAL_ASSIGNMENT)
+
+    def test_none_assignment_is_normalized_to_manual(self) -> None:
+        config = AppConfig()
+        config.assign("stage.x", None)
+        self.assertEqual(config.assignments["stage.x"], MANUAL_ASSIGNMENT)
 
     def test_only_hardware_assignments_create_dashboard_modules(self) -> None:
         self.assertFalse(is_hardware_assignment(None))

@@ -52,16 +52,11 @@ class ScrollFrame(ttk.Frame):
             background=COLORS["background"],
             highlightthickness=0,
         )
-        scrollbar = ttk.Scrollbar(
-            self, orient="vertical", command=self.canvas.yview
-        )
         self.inner = ttk.Frame(self.canvas, style="Page.TFrame")
         self.window = self.canvas.create_window(
             (0, 0), window=self.inner, anchor="nw"
         )
-        self.canvas.configure(yscrollcommand=scrollbar.set)
         self.canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
         self.inner.bind(
             "<Configure>",
             lambda _event: self.canvas.configure(
@@ -90,16 +85,19 @@ class SlotCard(ttk.Frame):
         *,
         style: str = "Card.TFrame",
     ) -> None:
+        width, height = app.module_sizes.get(slot.key, (340, 340))
         super().__init__(
             master,
             style=style,
-            width=320,
-            height=320,
+            width=width,
+            height=height,
             padding=(20, 18),
         )
         self.app = app
         self.slot = slot
         self._alive = True
+        self._resize_callback: Callable[[], None] | None = None
+        self._resize_origin = (0, 0, width, height)
         self.grid_propagate(False)
 
     def destroy(self) -> None:
@@ -119,6 +117,39 @@ class SlotCard(ttk.Frame):
             owner=self,
             message=message,
         )
+
+    def enable_resize(self, callback: Callable[[], None]) -> None:
+        self._resize_callback = callback
+        handle = ttk.Label(
+            self,
+            text="⋰",
+            style="ResizeHandle.TLabel",
+        )
+        try:
+            handle.configure(cursor="bottom_right_corner")
+        except tk.TclError:
+            pass
+        handle.place(relx=1.0, rely=1.0, anchor="se", x=-3, y=-2)
+        handle.bind("<ButtonPress-1>", self._start_resize)
+        handle.bind("<B1-Motion>", self._drag_resize)
+        handle.lift()
+
+    def _start_resize(self, event: tk.Event[Any]) -> None:
+        self._resize_origin = (
+            event.x_root,
+            event.y_root,
+            int(self.cget("width")),
+            int(self.cget("height")),
+        )
+
+    def _drag_resize(self, event: tk.Event[Any]) -> None:
+        start_x, start_y, start_width, start_height = self._resize_origin
+        width = min(720, max(340, start_width + event.x_root - start_x))
+        height = min(720, max(340, start_height + event.y_root - start_y))
+        self.configure(width=width, height=height)
+        self.app.module_sizes[self.slot.key] = (width, height)
+        if self._resize_callback is not None:
+            self._resize_callback()
 
 
 class DeviceSlotCard(SlotCard):
@@ -573,15 +604,12 @@ class TemperatureSlotCard(DeviceSlotCard):
 
 
 class Dashboard(ttk.Frame):
-    minimum_card_width = 300
-    maximum_card_width = 360
     card_gap = 16
 
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
         super().__init__(master, style="Page.TFrame")
         self.app = app
         self.cards: list[SlotCard] = []
-        self._layout_signature = (0, 0)
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True)
         self.canvas = scroll.canvas
@@ -599,7 +627,8 @@ class Dashboard(ttk.Frame):
         ).pack(anchor="w")
 
         self.card_grid = ttk.Frame(self.content, style="Page.TFrame")
-        self.card_grid.pack(fill="both", expand=True, padx=18, pady=(0, 24))
+        self.card_grid.pack(fill="x", padx=18, pady=(0, 24))
+        self.card_grid.pack_propagate(False)
         self.cards = [
             card
             for slot in SLOTS
@@ -607,26 +636,13 @@ class Dashboard(ttk.Frame):
         ]
 
         if self.cards:
-            ttk.Label(
-                heading,
-                text=(
-                    f"{len(self.cards)} assigned instrument modules · "
-                    "Manual and unassigned controls are hidden"
-                ),
-                style="Muted.TLabel",
-            ).pack(anchor="w", pady=(3, 0))
             self.after_idle(self._relayout)
             return
 
-        ttk.Label(
-            heading,
-            text="Only assigned hardware appears on this page",
-            style="Muted.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
         empty = ttk.Frame(
             self.card_grid,
             style="EmptyState.TFrame",
-            padding=(36, 42),
+            padding=(36, 54),
         )
         empty.pack(fill="x", padx=6, pady=6)
         ttk.Label(
@@ -634,47 +650,32 @@ class Dashboard(ttk.Frame):
             text="No instruments assigned",
             style="EmptyStateTitle.TLabel",
         ).pack()
-        ttk.Label(
-            empty,
-            text=(
-                "Open Assignments to select hardware. Manual and Unassigned "
-                "degrees of freedom do not create dashboard modules."
-            ),
-            style="EmptyStateText.TLabel",
-            wraplength=620,
-            justify="center",
-        ).pack(pady=(8, 0))
+        self.card_grid.configure(height=150)
 
     def _relayout(self, event: tk.Event[Any] | None = None) -> None:
         if not self.cards:
             return
         width = event.width if event is not None else self.canvas.winfo_width()
-        available = max(self.minimum_card_width, width - 36)
-        columns = max(
-            1,
-            (available + self.card_gap)
-            // (self.minimum_card_width + self.card_gap),
-        )
-        card_width = min(
-            self.maximum_card_width,
-            max(
-                self.minimum_card_width,
-                (available - (columns - 1) * self.card_gap) // columns,
-            ),
-        )
-        signature = (columns, card_width)
-        if signature == self._layout_signature:
-            return
-        self._layout_signature = signature
-        for index, card in enumerate(self.cards):
-            card.configure(width=card_width, height=card_width)
-            card.grid(
-                row=index // columns,
-                column=index % columns,
-                padx=self.card_gap // 2,
-                pady=self.card_gap // 2,
-                sticky="nw",
+        available = max(300, width - 36)
+        x = 0
+        y = 0
+        row_height = 0
+        for card in self.cards:
+            card_width = int(card.cget("width"))
+            card_height = int(card.cget("height"))
+            if x and x + card_width > available:
+                x = 0
+                y += row_height + self.card_gap
+                row_height = 0
+            card.place(
+                x=x,
+                y=y,
+                width=card_width,
+                height=card_height,
             )
+            x += card_width + self.card_gap
+            row_height = max(row_height, card_height)
+        self.card_grid.configure(height=max(1, y + row_height))
 
     def _make_card(
         self,
@@ -689,28 +690,31 @@ class Dashboard(ttk.Frame):
         if driver is None:
             return None
         if slot.kind == "motor":
-            return MotorSlotCard(master, self.app, slot, driver)
-        return TemperatureSlotCard(master, self.app, slot, driver)
+            card: SlotCard = MotorSlotCard(master, self.app, slot, driver)
+        else:
+            card = TemperatureSlotCard(master, self.app, slot, driver)
+        card.enable_resize(self._relayout)
+        return card
 
 
 class AssignmentPage(ttk.Frame):
-    UNASSIGNED = "— Unassigned —"
-    MANUAL = "Manual (no instrument)"
+    MANUAL = "Manual"
 
     def __init__(self, master: tk.Misc, app: "G2DTCApplication") -> None:
-        super().__init__(master, style="Page.TFrame", padding=18)
+        super().__init__(master, style="Page.TFrame")
         self.app = app
         self.variables: dict[str, tk.StringVar] = {}
         self.combos: dict[str, ttk.Combobox] = {}
-        self.display_to_id: dict[str, str | None] = {
-            self.UNASSIGNED: None,
+        self.display_to_id: dict[str, str] = {
             self.MANUAL: MANUAL_ASSIGNMENT,
         }
-        self.id_to_display: dict[str | None, str] = {
-            None: self.UNASSIGNED,
+        self.id_to_display: dict[str, str] = {
             MANUAL_ASSIGNMENT: self.MANUAL,
         }
         self._build_device_names()
+        scroll = ScrollFrame(self)
+        scroll.pack(fill="both", expand=True)
+        self.content = scroll.inner
         self._build()
 
     def _build_device_names(self) -> None:
@@ -720,24 +724,16 @@ class AssignmentPage(ttk.Frame):
             self.id_to_display[summary.device_id] = display
 
     def _build(self) -> None:
-        top = ttk.Frame(self, style="Page.TFrame")
-        top.pack(fill="x", pady=(0, 12))
+        top = ttk.Frame(self.content, style="Page.TFrame")
+        top.pack(fill="x", padx=28, pady=(24, 18))
         ttk.Label(
             top,
             text="Assignments",
             style="PageTitle.TLabel",
         ).pack(side="left")
-        ttk.Label(
-            top,
-            text=(
-                "Choose hardware or Manual. Manual and Unassigned stay hidden "
-                "from the Dashboard."
-            ),
-            style="Muted.TLabel",
-        ).pack(side="left", padx=(14, 0), pady=(8, 0))
         ttk.Button(
             top,
-            text="Hardware devices...",
+            text="Hardware",
             command=lambda: HardwareDialog(self.app),
         ).pack(side="right")
         demo_var = tk.BooleanVar(value=self.app.config.simulation)
@@ -749,112 +745,78 @@ class AssignmentPage(ttk.Frame):
             command=lambda: self.app.set_simulation(demo_var.get()),
         ).pack(side="right", padx=12)
 
-        assignments = ttk.LabelFrame(
-            self,
-            text="10 degrees of freedom + temperature",
-            style="Group.TLabelframe",
-            padding=14,
-        )
-        assignments.pack(fill="x")
-        for column, text in enumerate(
-            ("System", "Degree of freedom", "Type", "Assigned device")
-        ):
+        groups: list[tuple[str, str]] = []
+        for slot in SLOTS:
+            group = (slot.group, slot.group_label)
+            if group not in groups:
+                groups.append(group)
+
+        for group_key, group_label in groups:
+            section = ttk.Frame(self.content, style="Page.TFrame")
+            section.pack(fill="x", padx=28, pady=(0, 24))
             ttk.Label(
-                assignments, text=text, style="TableHeader.TLabel"
-            ).grid(row=0, column=column, sticky="w", padx=(0, 14), pady=(0, 8))
-        assignments.columnconfigure(3, weight=1)
+                section,
+                text=group_label,
+                style="SectionTitle.TLabel",
+            ).pack(anchor="w", pady=(0, 8))
 
-        for row, slot in enumerate(SLOTS, 1):
-            ttk.Label(assignments, text=slot.group_label).grid(
-                row=row, column=0, sticky="w", padx=(0, 14), pady=4
-            )
-            ttk.Label(
-                assignments, text=slot.label, style="Strong.TLabel"
-            ).grid(row=row, column=1, sticky="w", padx=(0, 14), pady=4)
-            ttk.Label(
-                assignments,
-                text="Motor" if slot.kind == "motor" else "Temperature",
-                style="Kind.TLabel",
-            ).grid(row=row, column=2, sticky="w", padx=(0, 14), pady=4)
+            for slot in (item for item in SLOTS if item.group == group_key):
+                row = ttk.Frame(section, style="Page.TFrame")
+                row.pack(fill="x", pady=5)
+                row.columnconfigure(1, weight=1)
+                label_area = ttk.Frame(row, style="Page.TFrame")
+                label_area.grid(row=0, column=0, sticky="w", padx=(0, 22))
+                ttk.Label(
+                    label_area,
+                    text=slot.label,
+                    style="AssignmentName.TLabel",
+                    width=12,
+                ).pack(anchor="w")
+                ttk.Label(
+                    label_area,
+                    text="Motor" if slot.kind == "motor" else "Temperature",
+                    style="AssignmentKind.TLabel",
+                ).pack(anchor="w")
 
-            options = [self.UNASSIGNED, self.MANUAL]
-            options.extend(
-                self.id_to_display[driver.device_id]
-                for driver in self.app.registry.drivers(slot.kind)
-            )
-            assigned = self.app.config.assignments.get(slot.key)
-            selected = self.id_to_display.get(
-                assigned,
-                f"Missing device [{assigned}]" if assigned else self.UNASSIGNED,
-            )
-            variable = tk.StringVar(value=selected)
-            combo = ttk.Combobox(
-                assignments,
-                textvariable=variable,
-                values=options,
-                state="readonly",
-                width=58,
-            )
-            combo.grid(row=row, column=3, sticky="ew", pady=4)
-            combo.bind(
-                "<<ComboboxSelected>>",
-                lambda _event, key=slot.key: self._changed(key),
-            )
-            self.variables[slot.key] = variable
-            self.combos[slot.key] = combo
+                options = [self.MANUAL]
+                options.extend(
+                    self.id_to_display[driver.device_id]
+                    for driver in self.app.registry.drivers(slot.kind)
+                )
+                assigned = self.app.config.assignments.get(
+                    slot.key,
+                    MANUAL_ASSIGNMENT,
+                )
+                selected = self.id_to_display.get(
+                    assigned,
+                    f"Missing device [{assigned}]",
+                )
+                variable = tk.StringVar(value=selected)
+                combo = ttk.Combobox(
+                    row,
+                    textvariable=variable,
+                    values=options,
+                    state="readonly",
+                )
+                combo.grid(row=0, column=1, sticky="ew")
+                combo.bind(
+                    "<<ComboboxSelected>>",
+                    lambda _event, key=slot.key: self._changed(key),
+                )
+                self.variables[slot.key] = variable
+                self.combos[slot.key] = combo
 
-        devices = ttk.LabelFrame(
-            self,
-            text="Available devices",
-            style="Group.TLabelframe",
-            padding=12,
-        )
-        devices.pack(fill="both", expand=True, pady=(14, 0))
-        columns = ("name", "kind", "source", "id")
-        tree = ttk.Treeview(
-            devices,
-            columns=columns,
-            show="headings",
-            height=8,
-        )
-        headings = {
-            "name": ("Name", 250),
-            "kind": ("Type", 100),
-            "source": ("Source", 130),
-            "id": ("Device ID", 310),
-        }
-        for column, (text, width) in headings.items():
-            tree.heading(column, text=text)
-            tree.column(column, width=width, anchor="w")
-        for summary in self.app.registry.summaries():
-            tree.insert(
-                "",
-                "end",
-                values=(
-                    summary.display_name,
-                    "Motor" if summary.kind == "motor" else "Temperature",
-                    summary.source,
-                    summary.device_id,
-                ),
-            )
-        tree.pack(fill="both", expand=True)
-
-        footer = ttk.Frame(self, style="Page.TFrame")
-        footer.pack(fill="x", pady=(10, 0))
-        ttk.Label(
-            footer,
-            text=f"Configuration: {self.app.config_path}",
-            style="Muted.TLabel",
-        ).pack(side="left")
+        footer = ttk.Frame(self.content, style="Page.TFrame")
+        footer.pack(fill="x", padx=28, pady=(0, 28))
         ttk.Button(
             footer,
-            text="Open configuration folder",
+            text="Open config",
             style="Small.TButton",
             command=self.app.open_config_folder,
         ).pack(side="right")
         ttk.Button(
             footer,
-            text="Reload from disk",
+            text="Reload",
             style="Small.TButton",
             command=self.app.reload_from_disk,
         ).pack(side="right", padx=(0, 8))
@@ -879,7 +841,7 @@ class AssignmentPage(ttk.Frame):
             self.app.set_status(
                 f"{device_id} moved to {slot_key}; "
                 f"{cleared_slot.group_label} {cleared_slot.label} "
-                "was unassigned"
+                "was set to Manual"
             )
         else:
             self.app.set_status(f"Saved assignment for {slot_key}")
@@ -1195,7 +1157,7 @@ class HardwareDialog(tk.Toplevel):
         if not messagebox.askyesno(
             "Delete device",
             f"Delete {item.get('name', item['id'])}?\n"
-            "Related degrees of freedom will become unassigned.",
+            "Related degrees of freedom will switch to Manual.",
             parent=self,
         ):
             return
@@ -1226,6 +1188,7 @@ class G2DTCApplication(tk.Tk):
         self.status_var = tk.StringVar(value="Ready")
         self._closing = False
         self.commit_sha = current_commit_sha()
+        self.module_sizes: dict[str, tuple[int, int]] = {}
         self.registry = DeviceRegistry(self.config, log_callback=self._device_log)
 
         self.title("G2DTC · General 2D Material Transfer Controller")
@@ -1298,13 +1261,7 @@ class G2DTCApplication(tk.Tk):
             "HeaderTitle.TLabel",
             background=COLORS["header"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 22, "bold"),
-        )
-        style.configure(
-            "HeaderSub.TLabel",
-            background=COLORS["header"],
-            foreground=COLORS["muted"],
-            font=("Helvetica Neue", 11),
+            font=("Helvetica Neue", 30, "bold"),
         )
         style.configure(
             "VersionLink.TLabel",
@@ -1322,7 +1279,7 @@ class G2DTCApplication(tk.Tk):
             "CardTitle.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 17, "bold"),
+            font=("Helvetica Neue", 20, "bold"),
         )
         style.configure(
             "ModuleMeta.TLabel",
@@ -1387,7 +1344,7 @@ class G2DTCApplication(tk.Tk):
             "PageTitle.TLabel",
             background=COLORS["background"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 24, "bold"),
+            font=("Helvetica Neue", 30, "bold"),
         )
         style.configure(
             "Muted.TLabel",
@@ -1404,12 +1361,7 @@ class G2DTCApplication(tk.Tk):
             "EmptyStateTitle.TLabel",
             background=COLORS["surface"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 18, "bold"),
-        )
-        style.configure(
-            "EmptyStateText.TLabel",
-            background=COLORS["surface"],
-            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 22, "bold"),
         )
         style.configure(
             "Page.TCheckbutton",
@@ -1421,28 +1373,29 @@ class G2DTCApplication(tk.Tk):
             background=COLORS["surface"],
             foreground=COLORS["text"],
         )
-        style.configure("Strong.TLabel", font=("Helvetica Neue", 12, "bold"))
         style.configure(
-            "Kind.TLabel",
-            foreground=COLORS["accent"],
-            font=("Helvetica Neue", 11),
-        )
-        style.configure(
-            "TableHeader.TLabel",
-            foreground=COLORS["muted"],
-            font=("Helvetica Neue", 11, "bold"),
-        )
-        style.configure(
-            "Group.TLabelframe",
-            background=COLORS["background"],
-            relief="flat",
-            borderwidth=0,
-        )
-        style.configure(
-            "Group.TLabelframe.Label",
+            "SectionTitle.TLabel",
             background=COLORS["background"],
             foreground=COLORS["text"],
-            font=("Helvetica Neue", 17, "bold"),
+            font=("Helvetica Neue", 22, "bold"),
+        )
+        style.configure(
+            "AssignmentName.TLabel",
+            background=COLORS["background"],
+            foreground=COLORS["text"],
+            font=("Helvetica Neue", 16, "bold"),
+        )
+        style.configure(
+            "AssignmentKind.TLabel",
+            background=COLORS["background"],
+            foreground=COLORS["muted"],
+            font=("Helvetica Neue", 10),
+        )
+        style.configure(
+            "ResizeHandle.TLabel",
+            background=COLORS["surface"],
+            foreground="#CBD5E1",
+            font=("Helvetica Neue", 12),
         )
         style.configure(
             "Accent.TButton",
@@ -1497,7 +1450,7 @@ class G2DTCApplication(tk.Tk):
         ).pack(side="left")
         version_label = ttk.Label(
             title_row,
-            text=f"commit {self.commit_sha}  ·  {REPOSITORY_URL}",
+            text=f"{self.commit_sha}  ·  {REPOSITORY_URL}",
             style="VersionLink.TLabel",
             cursor="hand2",
         )
@@ -1508,11 +1461,6 @@ class G2DTCApplication(tk.Tk):
                 source_url(self.commit_sha)
             ),
         )
-        ttk.Label(
-            title_area,
-            text="General 2D Material Transfer Controller",
-            style="HeaderSub.TLabel",
-        ).pack(anchor="w")
         ttk.Button(
             header,
             text="Connect assigned devices",
@@ -1535,11 +1483,6 @@ class G2DTCApplication(tk.Tk):
         ttk.Label(
             status, textvariable=self.status_var, style="Muted.TLabel"
         ).pack(side="left")
-        ttk.Label(
-            status,
-            text=f"{len(self.registry)} devices",
-            style="Muted.TLabel",
-        ).pack(side="right")
 
     def rebuild_views(self, *, selected_tab: int | None = None) -> None:
         if selected_tab is None and self.notebook.tabs():
@@ -1662,7 +1605,7 @@ class G2DTCApplication(tk.Tk):
         if not enabled:
             for key, value in list(self.config.assignments.items()):
                 if isinstance(value, str) and value.startswith("sim."):
-                    self.config.assignments[key] = None
+                    self.config.assignments[key] = MANUAL_ASSIGNMENT
         self.save()
         self._rebuild_registry(selected_tab=1)
 
@@ -1679,7 +1622,7 @@ class G2DTCApplication(tk.Tk):
         old_id = removed_id or renamed_from
         if old_id:
             for slot_key, assigned in list(self.config.assignments.items()):
-                replacement: str | None = None
+                replacement = MANUAL_ASSIGNMENT
                 if renamed_to and old_type == new_type:
                     if old_type == "esp300" and assigned and assigned.startswith(
                         old_id + ".axis"
